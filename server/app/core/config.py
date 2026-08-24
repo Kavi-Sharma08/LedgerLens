@@ -1,13 +1,20 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+# Anchor .env to the server package directory so the configured MongoDB URI is
+# loaded regardless of the process working directory. A relative ".env" here
+# silently falls back to defaults when scripts run from another folder, which
+# has already caused data to land in an unintended local database.
+SERVER_DIR = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=SERVER_DIR / ".env", env_file_encoding="utf-8", extra="ignore"
     )
 
     # Application

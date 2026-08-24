@@ -1,15 +1,35 @@
-import { List } from "lucide-react";
+import { Suspense } from "react";
 
-import { ComingSoon } from "@/components/layout/coming-soon";
+import { PageHeader } from "@/components/common/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TransactionsView } from "@/components/domain/transactions-view";
 
 export const metadata = { title: "Transactions" };
 
 export default function TransactionsPage() {
   return (
-    <ComingSoon
-      icon={List}
-      title="No transactions yet"
-      description="Normalized transactions from every connected source will be searchable and filterable here."
-    />
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <PageHeader
+        title="Transactions"
+        description="Every normalized record across your financial sources."
+      />
+      <Suspense fallback={<TransactionsSkeleton />}>
+        <TransactionsView />
+      </Suspense>
+    </div>
+  );
+}
+
+function TransactionsSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading transactions">
+      <div className="flex flex-wrap gap-2">
+        <Skeleton className="h-8 w-full max-w-xs" />
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-8 w-28" />
+        <Skeleton className="h-8 w-32" />
+      </div>
+      <Skeleton className="h-96 w-full rounded-xl" />
+    </div>
   );
 }

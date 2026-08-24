@@ -1,15 +1,16 @@
-import { ArrowLeftRight } from "lucide-react";
-
-import { ComingSoon } from "@/components/layout/coming-soon";
+import { PageHeader } from "@/components/common/page-header";
+import { ReconciliationsView } from "@/components/domain/reconciliations-view";
 
 export const metadata = { title: "Reconciliations" };
 
 export default function ReconciliationsPage() {
   return (
-    <ComingSoon
-      icon={ArrowLeftRight}
-      title="No reconciliations yet"
-      description="Once sources are connected, LedgerLens will continuously reconcile your ledgers and report status here."
-    />
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <PageHeader
+        title="Reconciliations"
+        description="Run comparisons between your sources and review what the engine finds."
+      />
+      <ReconciliationsView />
+    </div>
   );
 }

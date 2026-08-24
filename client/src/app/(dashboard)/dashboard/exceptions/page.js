@@ -1,15 +1,16 @@
-import { TriangleAlert } from "lucide-react";
-
-import { ComingSoon } from "@/components/layout/coming-soon";
+import { PageHeader } from "@/components/common/page-header";
+import { ExceptionsView } from "@/components/domain/exceptions-view";
 
 export const metadata = { title: "Exceptions" };
 
 export default function ExceptionsPage() {
   return (
-    <ComingSoon
-      icon={TriangleAlert}
-      title="Exceptions appear once reconciliation runs"
-      description="Unmatched records will be ranked by materiality, with AI-prepared evidence for each one."
-    />
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <PageHeader
+        title="Exceptions"
+        description="Issues the engine found in your data that need a human decision."
+      />
+      <ExceptionsView />
+    </div>
   );
 }

@@ -1,16 +1,16 @@
-import { Plug } from "lucide-react";
-
-import { ComingSoon } from "@/components/layout/coming-soon";
+import { PageHeader } from "@/components/common/page-header";
+import { SourcesView } from "@/components/domain/sources-view";
 
 export const metadata = { title: "Sources" };
 
 export default function SourcesPage() {
   return (
-    <ComingSoon
-      icon={Plug}
-      title="Connect your first financial source"
-      description="Source connections (bank feeds, payment processors, ERP exports) arrive next — they unlock reconciliation."
-      day="Next phase"
-    />
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <PageHeader
+        title="Sources"
+        description="The financial systems LedgerLens watches — connect them, then import their statements."
+      />
+      <SourcesView />
+    </div>
   );
 }

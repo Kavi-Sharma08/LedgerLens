@@ -23,9 +23,10 @@ from fastapi import Depends, Request
 
 from ..core.config import get_settings
 from ..core.database import get_database
-from ..core.errors import UnauthorizedError
+from ..core.errors import NotFoundError, UnauthorizedError
 from ..models.user import User
-from ..repositories import user_repository
+from ..models.workspace import Workspace
+from ..repositories import user_repository, workspace_repository
 
 logger = logging.getLogger("ledgerlens.deps")
 
@@ -65,3 +66,20 @@ async def get_current_user(
         # Authenticated upstream but the account no longer exists.
         raise UnauthorizedError()
     return user
+
+
+async def get_current_workspace(
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_database),
+) -> Workspace:
+    """Trusted workspace context for every financial endpoint.
+
+    Day 1: users own exactly one workspace created at signup. The workspace
+    id is resolved server-side from authentication — it is NEVER accepted
+    from request bodies or query strings, so a browser cannot address another
+    tenant's financial data. Workspace membership/roles will extend this
+    dependency later without changing any route signature."""
+    workspace = await workspace_repository.first_for_owner(db, str(current_user.id))
+    if workspace is None:
+        raise NotFoundError(message="You don't have an active workspace yet.")
+    return workspace
