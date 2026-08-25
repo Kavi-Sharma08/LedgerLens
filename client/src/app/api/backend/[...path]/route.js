@@ -13,6 +13,7 @@ import { auth } from "@/lib/auth";
  *
  *   X-LL-User-Id       stable MongoDB user id (from the Auth.js token)
  *   X-LL-User-Email    user email (URI-encoded)
+ *   X-LL-Workspace-Id  active workspace id (from cookie, validated server-side)
  *   X-LL-Internal-Sec  INTERNAL_API_SECRET proving Next.js originated the call
  *
  * Client-supplied copies of these headers are always stripped first, so a
@@ -21,6 +22,7 @@ import { auth } from "@/lib/auth";
  */
 
 const INTERNAL_SECRET_HEADER = "X-LL-Internal-Secret";
+const WORKSPACE_ID_HEADER = "X-LL-Workspace-Id";
 
 function requireInternalSecret() {
   const secret = process.env.INTERNAL_API_SECRET;
@@ -53,6 +55,14 @@ async function forward(request, context, method) {
   headers.set("X-LL-User-Id", String(session.user.id));
   headers.set("X-LL-User-Email", encodeURIComponent(String(session.user.email ?? "")));
   headers.set(INTERNAL_SECRET_HEADER, secret);
+
+  // Read active workspace from cookie. The cookie is set by the frontend when
+  // the user switches workspaces. The backend verifies membership — the cookie
+  // value alone is NOT authorization.
+  const workspaceId = request.cookies.get("ll-active-workspace")?.value;
+  if (workspaceId && /^[a-fA-F0-9]{24}$/.test(workspaceId)) {
+    headers.set(WORKSPACE_ID_HEADER, workspaceId);
+  }
 
   let upstream;
   try {

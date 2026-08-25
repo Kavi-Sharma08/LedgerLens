@@ -3,13 +3,14 @@ import { serverApi } from "@/lib/api/client";
 import { PageHeader } from "@/components/common/page-header";
 import { DetailField, DrawerSection } from "@/components/common/drawer";
 import { SettingsForm } from "@/components/domain/settings-form";
+import { WorkspaceMembersSection } from "@/components/domain/workspace-members-section";
+import { PasswordSection } from "@/components/domain/password-section";
 
 export const metadata = { title: "Settings" };
 
 /**
- * Account and workspace details. Both come from trusted sources: the Auth.js
- * session (identity) and FastAPI (workspace). No settings are editable yet —
- * the page shows exactly what the platform knows, with sign-out.
+ * Account and workspace details.
+ * Shows account info, password management, workspace settings, and member management.
  */
 export default async function SettingsPage() {
   const session = await auth();
@@ -25,21 +26,25 @@ export default async function SettingsPage() {
     <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <PageHeader
         title="Settings"
-        description="Your account and workspace details."
+        description="Your account, workspace, and team management."
       />
 
+      {/* Account */}
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <DrawerSection title="Account" className="border-t-0">
           <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
             <DetailField label="Name">{session?.user?.name || "—"}</DetailField>
             <DetailField label="Email">{session?.user?.email || "—"}</DetailField>
           </dl>
-          <p className="mt-4 text-sm text-muted-foreground">
-            Profile details and role management are managed by your authentication provider.
-          </p>
         </DrawerSection>
+      </div>
 
-        <DrawerSection title="Workspace">
+      {/* Password */}
+      <PasswordSection />
+
+      {/* Workspace */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <DrawerSection title="Workspace" className="border-t-0">
           <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
             <DetailField label="Name">{workspace?.name || "—"}</DetailField>
             <DetailField label="Slug">
@@ -54,6 +59,9 @@ export default async function SettingsPage() {
           </dl>
         </DrawerSection>
       </div>
+
+      {/* Members */}
+      {workspace?.id && <WorkspaceMembersSection workspaceId={workspace.id} />}
 
       <SettingsForm />
     </div>

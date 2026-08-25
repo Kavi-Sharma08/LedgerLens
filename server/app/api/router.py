@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .routes import (
+    audit,
     exceptions,
     files,
     health,
@@ -25,4 +26,5 @@ api_router.include_router(
     reconciliations.router, prefix="/reconciliations", tags=["reconciliations"]
 )
 api_router.include_router(exceptions.router, prefix="/exceptions", tags=["exceptions"])
+api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
 api_router.include_router(overview.router, prefix="/overview", tags=["overview"])

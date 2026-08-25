@@ -15,6 +15,7 @@ import { getAuthDatabase } from "@/lib/mongo";
 
 const USERS = "users";
 const WORKSPACES = "workspaces";
+const WORKSPACE_MEMBERS = "workspace_members";
 
 const BCRYPT_ROUNDS = 12;
 const SLUG_CLEANUP = /[^a-z0-9]+/g;
@@ -107,10 +108,23 @@ export async function registerAccount({ name, email, password, workspaceName }) 
     throw error;
   }
 
+  const workspaceId = new ObjectId();
   await db[WORKSPACES].insertOne({
+    _id: workspaceId,
     name: workspaceName.trim(),
     slug: await uniqueSlug(db, workspaceName),
     ownerId: result.insertedId,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // Create OWNER membership record
+  await db[WORKSPACE_MEMBERS].insertOne({
+    workspaceId: workspaceId,
+    userId: result.insertedId,
+    role: "OWNER",
+    status: "ACTIVE",
+    joinedAt: now,
     createdAt: now,
     updatedAt: now,
   });
@@ -133,12 +147,46 @@ export async function ensureDefaultWorkspace(user) {
     return;
   }
 
+  // Check if user already has any workspace membership
+  const existingMembership = await db[WORKSPACE_MEMBERS].findOne({ userId: _id });
+  if (existingMembership) return;
+
+  const workspaceId = new ObjectId();
   const displayName = user.name || user.email?.split("@")[0] || "Workspace";
+  const now = new Date();
+
   await db[WORKSPACES].insertOne({
+    _id: workspaceId,
     name: `${displayName}'s Workspace`,
     slug: await uniqueSlug(db, displayName),
     ownerId: _id,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
   });
+
+  // Create OWNER membership record
+  await db[WORKSPACE_MEMBERS].insertOne({
+    workspaceId: workspaceId,
+    userId: _id,
+    role: "OWNER",
+    status: "ACTIVE",
+    joinedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+/**
+ * Set or update a LedgerLens password for the user.
+ * Google-only accounts can create a password; existing password users can change it.
+ */
+export async function setPassword(userId, newPassword) {
+  const db = await getAuthDatabase();
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  const _id = typeof userId === "string" ? ObjectId.createFromHexString(userId) : userId;
+
+  await db[USERS].updateOne(
+    { _id },
+    { $set: { passwordHash, updatedAt: new Date() } }
+  );
 }

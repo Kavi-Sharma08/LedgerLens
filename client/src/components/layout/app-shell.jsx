@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
  * Authenticated application shell: fixed sidebar on desktop, slide-in drawer
  * on smaller screens. Session data arrives pre-validated from the server layout.
  */
-export function AppShell({ user, workspace, children }) {
+export function AppShell({ user, workspace, allWorkspaces, children }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Escape closes the drawer; scroll is locked while open.
@@ -107,7 +107,7 @@ export function AppShell({ user, workspace, children }) {
               <Menu className="size-5" aria-hidden="true" />
             </button>
           </div>
-          <TopbarActions user={user} workspace={workspace} />
+          <TopbarActions user={user} workspace={workspace} allWorkspaces={allWorkspaces} />
         </header>
 
         <main className="flex-1">{children}</main>

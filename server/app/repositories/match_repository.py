@@ -119,3 +119,66 @@ async def insert_match(db, match: Match) -> Match:
     result = await db[MATCH_COLLECTION].insert_one(match.to_document())
     match.id = result.inserted_id
     return match
+
+
+async def get_match_by_id(db, workspace_id: ObjectId, match_id: ObjectId) -> Match | None:
+    """Fetch a single match by id, workspace-scoped."""
+    doc = await db[MATCH_COLLECTION].find_one(
+        {"_id": match_id, "workspaceId": workspace_id}
+    )
+    return Match.from_document(doc) if doc else None
+
+
+async def approve_match(
+    db, workspace_id: ObjectId, match_id: ObjectId, user_id: ObjectId, note: str = ""
+) -> Match:
+    """Set human_decision to APPROVED and update status to MANUAL_MATCHED."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    human_decision = {
+        "action": "APPROVED",
+        "userId": str(user_id),
+        "at": now.isoformat(),
+        "note": note,
+    }
+    doc = await db[MATCH_COLLECTION].find_one_and_update(
+        {"_id": match_id, "workspaceId": workspace_id},
+        {
+            "$set": {
+                "humanDecision": human_decision,
+                "status": "MANUAL_MATCHED",
+            }
+        },
+        return_document=True,
+    )
+    if doc is None:
+        return None
+    return Match.from_document(doc)
+
+
+async def reject_match(
+    db, workspace_id: ObjectId, match_id: ObjectId, user_id: ObjectId, note: str = ""
+) -> Match:
+    """Set human_decision to REJECTED."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    human_decision = {
+        "action": "REJECTED",
+        "userId": str(user_id),
+        "at": now.isoformat(),
+        "note": note,
+    }
+    doc = await db[MATCH_COLLECTION].find_one_and_update(
+        {"_id": match_id, "workspaceId": workspace_id},
+        {
+            "$set": {
+                "humanDecision": human_decision,
+            }
+        },
+        return_document=True,
+    )
+    if doc is None:
+        return None
+    return Match.from_document(doc)

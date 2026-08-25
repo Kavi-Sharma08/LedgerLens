@@ -13,6 +13,10 @@ INDEXES = [
     ("users", [("email", 1)], True),          # email must be unique per user
     ("workspaces", [("slug", 1)], True),      # slugs are addressable identifiers
     ("workspaces", [("ownerId", 1)], False),  # matches the camelCase document field
+    # --- workspace membership (Phase 3) ---
+    ("workspace_members", [("workspaceId", 1), ("userId", 1)], True),  # one membership per user/workspace
+    ("workspace_members", [("userId", 1)], False),                     # "all my workspaces" lookup
+    ("workspace_members", [("workspaceId", 1), ("role", 1)], False),  # role-based queries
     # --- financial data (Phase 2) ---
     # Every financial index leads with workspaceId: all queries are
     # tenant-scoped first, so isolation is reflected in the index layout.
@@ -52,6 +56,9 @@ INDEXES = [
     ("matches", [("workspaceId", 1), ("reconciliationRunId", 1)], False),
     ("exceptions", [("workspaceId", 1), ("reconciliationRunId", 1)], False),
     ("exceptions", [("workspaceId", 1), ("status", 1)], False),
+    # --- audit logs (Phase 9) ---
+    ("audit_logs", [("workspaceId", 1), ("createdAt", -1)], False),
+    ("audit_logs", [("workspaceId", 1), ("action", 1), ("createdAt", -1)], False),
 ]
 
 

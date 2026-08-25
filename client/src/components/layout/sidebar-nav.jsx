@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { dashboardNav, dashboardSecondaryNav } from "@/config/site";
 import {
   ArrowLeftRight,
+  History,
   LayoutDashboard,
   List,
   Plug,
@@ -21,6 +22,7 @@ const ICONS = {
   list: List,
   "triangle-alert": TriangleAlert,
   plug: Plug,
+  history: History,
   settings: Settings,
 };
 

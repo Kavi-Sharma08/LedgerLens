@@ -98,5 +98,58 @@ class ExceptionReason(str, Enum):
 
 class ExceptionStatus(str, Enum):
     OPEN = "OPEN"
+    INVESTIGATING = "INVESTIGATING"
     RESOLVED = "RESOLVED"
     DISMISSED = "DISMISSED"
+
+
+class WorkspaceRole(str, Enum):
+    OWNER = "OWNER"
+    ADMIN = "ADMIN"
+    MEMBER = "MEMBER"
+    VIEWER = "VIEWER"
+
+
+class MembershipStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    PENDING = "PENDING"
+    INVITED = "INVITED"
+
+
+class InvitationStatus(str, Enum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    EXPIRED = "EXPIRED"
+    REVOKED = "REVOKED"
+
+
+# Role → permission mapping.  A role inherits all permissions from roles
+# below it in the hierarchy (OWNER > ADMIN > MEMBER > VIEWER).
+ROLE_HIERARCHY: dict[WorkspaceRole, int] = {
+    WorkspaceRole.OWNER: 40,
+    WorkspaceRole.ADMIN: 30,
+    WorkspaceRole.MEMBER: 20,
+    WorkspaceRole.VIEWER: 10,
+}
+
+# Named permissions.  Checked via `user_has_permission(role, perm)`.
+PERMISSIONS = {
+    "manage_workspace": WorkspaceRole.OWNER,
+    "manage_members": WorkspaceRole.ADMIN,
+    "invite_members": WorkspaceRole.ADMIN,
+    "create_source": WorkspaceRole.MEMBER,
+    "upload_file": WorkspaceRole.MEMBER,
+    "run_reconciliation": WorkspaceRole.MEMBER,
+    "approve_match": WorkspaceRole.MEMBER,
+    "resolve_exception": WorkspaceRole.MEMBER,
+    "view_data": WorkspaceRole.VIEWER,
+    "view_audit": WorkspaceRole.ADMIN,
+}
+
+
+def user_has_permission(role: WorkspaceRole, permission: str) -> bool:
+    """Check whether *role* grants *permission* using the hierarchy."""
+    required = PERMISSIONS.get(permission)
+    if required is None:
+        return False
+    return ROLE_HIERARCHY.get(role, 0) >= ROLE_HIERARCHY.get(required, 0)

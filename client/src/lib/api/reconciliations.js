@@ -67,3 +67,19 @@ export function listRunUnmatched(runId, { limit = 25, cursor, signal } = {}) {
     { signal }
   );
 }
+
+export function approveMatch(runId, matchId, { note = "", signal } = {}) {
+  return api.post(
+    `/api/reconciliations/${encodeURIComponent(runId)}/matches/${encodeURIComponent(matchId)}/approve`,
+    { note },
+    { signal }
+  );
+}
+
+export function rejectMatch(runId, matchId, { note = "", signal } = {}) {
+  return api.post(
+    `/api/reconciliations/${encodeURIComponent(runId)}/matches/${encodeURIComponent(matchId)}/reject`,
+    { note },
+    { signal }
+  );
+}

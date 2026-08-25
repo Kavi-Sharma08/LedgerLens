@@ -24,4 +24,7 @@ export const dashboardNav = [
   { title: "Sources", href: "/dashboard/sources", icon: "plug" },
 ];
 
-export const dashboardSecondaryNav = [{ title: "Settings", href: "/dashboard/settings", icon: "settings" }];
+export const dashboardSecondaryNav = [
+  { title: "Audit Log", href: "/dashboard/audit", icon: "history" },
+  { title: "Settings", href: "/dashboard/settings", icon: "settings" },
+];

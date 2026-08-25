@@ -26,11 +26,19 @@ function ForgotPasswordForm() {
       return;
     }
 
-    // Password-reset delivery is a later phase (email service + background
-    // job); until then we validate and show the standard response without
-    // hitting any API. Never reveal whether an account exists.
     setSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    setFieldError(null);
+
+    try {
+      await fetch("/api/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+    } catch {
+      // Silently ignore — we always show the same response
+    }
+
     setSentTo(email.trim());
     setSubmitting(false);
   }
@@ -75,7 +83,6 @@ function ForgotPasswordForm() {
           onChange={(e) => {
             setEmail(e.target.value);
             setFieldError(null);
-            setFormError(null);
           }}
           aria-invalid={Boolean(fieldError)}
           aria-describedby={fieldError ? "forgot-email-error" : undefined}
@@ -89,7 +96,7 @@ function ForgotPasswordForm() {
 
       <Button type="submit" className="w-full" disabled={submitting}>
         {submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
-        {submitting ? "Sending…" : "Send reset instructions"}
+        {submitting ? "Sending..." : "Send reset instructions"}
       </Button>
     </form>
   );

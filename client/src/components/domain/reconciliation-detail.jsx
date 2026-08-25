@@ -17,7 +17,7 @@ import { StatusBadge, exceptionReasonLabel, humanize } from "@/components/domain
 import { ConfidenceIndicator } from "@/components/domain/confidence-indicator";
 import { EvidenceList } from "@/components/domain/evidence-list";
 import { TransactionDrawer } from "@/components/domain/transaction-drawer";
-import { getRun, listRunMatches, listRunExceptions, listRunUnmatched } from "@/lib/api/reconciliations";
+import { getRun, listRunMatches, listRunExceptions, listRunUnmatched, approveMatch, rejectMatch } from "@/lib/api/reconciliations";
 import { formatCount, formatDateTime, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -225,6 +225,7 @@ function MatchesPanel({ runId, statuses, emptyTitle, emptyDescription }) {
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [transactionId, setTransactionId] = useState(null);
+  const [acting, setActing] = useState(null);
 
   const loadPage = useCallback(
     ({ signal, cursor }) => {
@@ -268,6 +269,36 @@ function MatchesPanel({ runId, statuses, emptyTitle, emptyDescription }) {
     });
   }
 
+  async function handleApprove(row, event) {
+    event.stopPropagation();
+    setActing(row.id);
+    try {
+      await approveMatch(runId, row.id);
+      loadPage({ cursor: cursorStack[cursorStack.length - 1] ?? null });
+    } catch {
+      // Error handled by keeping the button enabled
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function handleReject(row, event) {
+    event.stopPropagation();
+    setActing(row.id);
+    try {
+      await rejectMatch(runId, row.id);
+      loadPage({ cursor: cursorStack[cursorStack.length - 1] ?? null });
+    } catch {
+      // Error handled by keeping the button enabled
+    } finally {
+      setActing(null);
+    }
+  }
+
+  const canReview = (row) => {
+    return (statuses.includes("LIKELY_MATCH") || statuses.includes("AMBIGUOUS")) && !row.humanDecision;
+  };
+
   async function openEvidence(row, event) {
     event.stopPropagation();
     setExpanded((current) => (current === row.id ? null : row.id));
@@ -279,18 +310,48 @@ function MatchesPanel({ runId, statuses, emptyTitle, emptyDescription }) {
         columns={[
           ...MATCH_COLUMNS,
           {
-            key: "evidence",
+            key: "actions",
             header: "",
             align: "right",
             render: (row) => (
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={(event) => openEvidence(row, event)}
-                aria-expanded={expanded === row.id}
-              >
-                {expanded === row.id ? "Hide evidence" : "Evidence"}
-              </Button>
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                {canReview(row) && acting !== row.id && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-success hover:text-success"
+                      onClick={(e) => handleApprove(row, e)}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-destructive hover:text-destructive"
+                      onClick={(e) => handleReject(row, e)}
+                    >
+                      Reject
+                    </Button>
+                  </>
+                )}
+                {acting === row.id && (
+                  <span className="text-xs text-muted-foreground">Saving...</span>
+                )}
+                {row.humanDecision && (
+                  <Badge variant={row.humanDecision.action === "APPROVED" ? "success" : "destructive"} className="text-xs">
+                    {row.humanDecision.action === "APPROVED" ? "Approved" : "Rejected"}
+                  </Badge>
+                )}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={(event) => openEvidence(row, event)}
+                  aria-expanded={expanded === row.id}
+                >
+                  {expanded === row.id ? "Hide evidence" : "Evidence"}
+                </Button>
+              </div>
             ),
           },
         ]}

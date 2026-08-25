@@ -12,3 +12,27 @@ export function listExceptions({ status, limit = 25, cursor, signal } = {}) {
   const query = params.toString();
   return api.get(`/api/exceptions${query ? `?${query}` : ""}`, { signal });
 }
+
+export function assignException(exceptionId, assignedTo, { signal } = {}) {
+  return api.patch(
+    `/api/exceptions/${encodeURIComponent(exceptionId)}/assign`,
+    { assignedTo },
+    { signal }
+  );
+}
+
+export function updateExceptionStatus(exceptionId, status, { signal } = {}) {
+  return api.patch(
+    `/api/exceptions/${encodeURIComponent(exceptionId)}/status`,
+    { status },
+    { signal }
+  );
+}
+
+export function addExceptionNote(exceptionId, text, { signal } = {}) {
+  return api.post(
+    `/api/exceptions/${encodeURIComponent(exceptionId)}/notes`,
+    { text },
+    { signal }
+  );
+}

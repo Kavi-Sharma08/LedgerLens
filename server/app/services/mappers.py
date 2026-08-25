@@ -35,6 +35,19 @@ def to_workspace_public(workspace) -> WorkspacePublic | None:
     return WorkspacePublic(id=str(workspace.id), name=workspace.name, slug=workspace.slug)
 
 
+def to_exception_public_with_assignee(exc) -> ExceptionPublic:
+    """Extend exception mapper to include assignment and notes fields."""
+    base = to_exception_public(exc)
+    # Add extra fields if present on the model
+    data = base.model_dump()
+    data["assignedTo"] = getattr(exc, "assigned_to", None)
+    data["assignedAt"] = getattr(exc, "assigned_at", None).isoformat() if getattr(exc, "assigned_at", None) else None
+    data["resolvedBy"] = getattr(exc, "resolved_by", None)
+    data["resolvedAt"] = getattr(exc, "resolved_at", None).isoformat() if getattr(exc, "resolved_at", None) else None
+    data["notes"] = getattr(exc, "notes", None) or []
+    return data
+
+
 def _date_str(value) -> str | None:
     return value.isoformat() if value is not None else None
 

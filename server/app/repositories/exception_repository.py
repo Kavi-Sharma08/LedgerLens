@@ -106,3 +106,80 @@ async def list_open(db, workspace_id: ObjectId, *, limit: int | None = None, cur
     return await list_for_workspace(
         db, workspace_id, status=ExceptionStatus.OPEN, limit=limit, cursor=cursor
     )
+
+
+async def get_by_id(db, workspace_id: ObjectId, exception_id: ObjectId) -> ReconciliationException | None:
+    """Fetch a single exception by id, workspace-scoped."""
+    doc = await db[COLLECTION].find_one(
+        {"_id": exception_id, "workspaceId": workspace_id}
+    )
+    return ReconciliationException.from_document(doc) if doc else None
+
+
+async def assign_exception(
+    db, workspace_id: ObjectId, exception_id: ObjectId, assigned_to: ObjectId
+) -> ReconciliationException | None:
+    """Assign an exception to a team member."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    doc = await db[COLLECTION].find_one_and_update(
+        {"_id": exception_id, "workspaceId": workspace_id},
+        {
+            "$set": {
+                "assignedTo": assigned_to,
+                "assignedAt": now,
+                "updatedAt": now,
+            }
+        },
+        return_document=True,
+    )
+    return ReconciliationException.from_document(doc) if doc else None
+
+
+async def update_status(
+    db,
+    workspace_id: ObjectId,
+    exception_id: ObjectId,
+    status: ExceptionStatus,
+    user_id: ObjectId | None = None,
+) -> ReconciliationException | None:
+    """Change the status of an exception (OPEN -> INVESTIGATING -> RESOLVED/DISMISSED)."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    update_fields = {"status": status.value, "updatedAt": now}
+
+    if status in (ExceptionStatus.RESOLVED, ExceptionStatus.DISMISSED):
+        update_fields["resolvedBy"] = user_id
+        update_fields["resolvedAt"] = now
+
+    doc = await db[COLLECTION].find_one_and_update(
+        {"_id": exception_id, "workspaceId": workspace_id},
+        {"$set": update_fields},
+        return_document=True,
+    )
+    return ReconciliationException.from_document(doc) if doc else None
+
+
+async def add_note(
+    db, workspace_id: ObjectId, exception_id: ObjectId, user_id: ObjectId, text: str
+) -> ReconciliationException | None:
+    """Append an investigation note to an exception."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    note = {
+        "userId": str(user_id),
+        "text": text,
+        "createdAt": now.isoformat(),
+    }
+    doc = await db[COLLECTION].find_one_and_update(
+        {"_id": exception_id, "workspaceId": workspace_id},
+        {
+            "$push": {"notes": note},
+            "$set": {"updatedAt": now},
+        },
+        return_document=True,
+    )
+    return ReconciliationException.from_document(doc) if doc else None

@@ -55,6 +55,7 @@ function CopyIcon({ className }) {
 
 const EXCEPTION_STATUSES = {
   OPEN: { label: "Open", variant: "warning", icon: CircleAlert },
+  INVESTIGATING: { label: "Investigating", variant: "info", icon: Search },
   RESOLVED: { label: "Resolved", variant: "success", icon: Check },
   DISMISSED: { label: "Dismissed", variant: "neutral", icon: CircleDashed },
 };

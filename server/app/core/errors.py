@@ -46,6 +46,12 @@ class UnauthorizedError(AppError):
     message = "Your session has expired or is invalid. Please sign in again."
 
 
+class ForbiddenError(AppError):
+    status_code = 403
+    code = "forbidden"
+    message = "You don't have permission to do this."
+
+
 class NotFoundError(AppError):
     status_code = 404
     code = "not_found"

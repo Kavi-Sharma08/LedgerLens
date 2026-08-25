@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, Query
 
-from ...api.deps import get_current_workspace
+from ...api.deps import get_current_membership, get_current_workspace, require_permission
 from ...core.database import get_database
-from ...core.errors import AppError
-from ...models.enums import ExceptionStatus, ReconciliationStatus
+from ...core.errors import AppError, NotFoundError
+from ...models.enums import ExceptionStatus, ReconciliationStatus, WorkspaceRole
 from ...models.workspace import Workspace
-from ...repositories import exception_repository, reconciliation_run_repository
+from ...repositories import exception_repository, match_repository, reconciliation_run_repository
 from ...repositories.common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, InvalidCursorError
 from ...schemas.common import paginated
 from ...schemas.reconciliation import RunCreate
@@ -156,3 +156,59 @@ async def list_run_exceptions(
         limit or DEFAULT_PAGE_SIZE,
         page.next_cursor,
     )
+
+
+@router.post("/{run_id}/matches/{match_id}/approve")
+async def approve_match(
+    run_id: str,
+    match_id: str,
+    body: dict | None = None,
+    membership=Depends(require_permission("approve_match")),
+    workspace: Workspace = Depends(get_current_workspace),
+    db=Depends(get_database),
+):
+    """Approve a match (human confirms the engine's suggestion)."""
+    from bson import ObjectId
+
+    try:
+        _match_id = ObjectId(match_id)
+    except Exception:
+        raise AppError(status_code=404, message="Match not found.")
+
+    match = await match_repository.get_match_by_id(db, workspace.id, _match_id)
+    if match is None:
+        raise NotFoundError(message="Match not found.")
+
+    note = (body or {}).get("note", "")
+    updated = await match_repository.approve_match(
+        db, workspace.id, _match_id, membership.user_id, note
+    )
+    return to_match_public(updated)
+
+
+@router.post("/{run_id}/matches/{match_id}/reject")
+async def reject_match(
+    run_id: str,
+    match_id: str,
+    body: dict | None = None,
+    membership=Depends(require_permission("approve_match")),
+    workspace: Workspace = Depends(get_current_workspace),
+    db=Depends(get_database),
+):
+    """Reject a match (human disagrees with the engine's suggestion)."""
+    from bson import ObjectId
+
+    try:
+        _match_id = ObjectId(match_id)
+    except Exception:
+        raise AppError(status_code=404, message="Match not found.")
+
+    match = await match_repository.get_match_by_id(db, workspace.id, _match_id)
+    if match is None:
+        raise NotFoundError(message="Match not found.")
+
+    note = (body or {}).get("note", "")
+    updated = await match_repository.reject_match(
+        db, workspace.id, _match_id, membership.user_id, note
+    )
+    return to_match_public(updated)
