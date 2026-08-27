@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { dashboardNav, dashboardSecondaryNav } from "@/config/site";
 import {
   ArrowLeftRight,
   History,
@@ -26,8 +25,11 @@ const ICONS = {
   settings: Settings,
 };
 
-export function SidebarNav({ onNavigate }) {
+export function SidebarNav({ primary, secondary, onNavigate }) {
   const pathname = usePathname();
+
+  const dashboardNav = primary || [];
+  const dashboardSecondaryNav = secondary || [];
 
   function renderItems(items) {
     return items.map((item) => {

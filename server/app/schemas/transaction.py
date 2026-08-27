@@ -20,4 +20,6 @@ class TransactionPublic(BaseModel):
     transactionType: str | None = None
     status: str
     potentialDuplicates: list[str] = []
+    metadata: dict = {}
+    fingerprint: str = ""
     createdAt: str | None = None

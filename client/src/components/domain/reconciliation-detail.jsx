@@ -16,7 +16,10 @@ import { Drawer, DetailField, DrawerSection } from "@/components/common/drawer";
 import { StatusBadge, exceptionReasonLabel, humanize } from "@/components/domain/status-badge";
 import { ConfidenceIndicator } from "@/components/domain/confidence-indicator";
 import { EvidenceList } from "@/components/domain/evidence-list";
+import { MatchDrawer } from "@/components/domain/match-drawer";
+import { ExceptionDetailDrawer } from "@/components/domain/exception-detail-drawer";
 import { TransactionDrawer } from "@/components/domain/transaction-drawer";
+import { useDashboard } from "@/components/common/dashboard-context";
 import { getRun, listRunMatches, listRunExceptions, listRunUnmatched, approveMatch, rejectMatch } from "@/lib/api/reconciliations";
 import { formatCount, formatDateTime, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -224,8 +227,9 @@ function MatchesPanel({ runId, statuses, emptyTitle, emptyDescription }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(null);
-  const [transactionId, setTransactionId] = useState(null);
+  const [selectedMatch, setSelectedMatch] = useState(null);
   const [acting, setActing] = useState(null);
+  const { can } = useDashboard();
 
   const loadPage = useCallback(
     ({ signal, cursor }) => {
@@ -315,7 +319,7 @@ function MatchesPanel({ runId, statuses, emptyTitle, emptyDescription }) {
             align: "right",
             render: (row) => (
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                {canReview(row) && acting !== row.id && (
+                {canReview(row) && acting !== row.id && can.approveMatches && (
                   <>
                     <Button
                       variant="ghost"
@@ -371,7 +375,7 @@ function MatchesPanel({ runId, statuses, emptyTitle, emptyDescription }) {
         empty={
           <EmptyState icon={ArrowLeftRight} title={emptyTitle} description={emptyDescription} />
         }
-        onRowClick={(row) => setTransactionId(row.transactionIds[0])}
+        onRowClick={(row) => setSelectedMatch(row)}
       />
 
       {page.items.map(
@@ -401,9 +405,11 @@ function MatchesPanel({ runId, statuses, emptyTitle, emptyDescription }) {
         />
       )}
 
-      <TransactionDrawer
-        transactionId={transactionId}
-        onClose={() => setTransactionId(null)}
+      <MatchDrawer
+        match={selectedMatch}
+        runId={runId}
+        onClose={() => setSelectedMatch(null)}
+        onDecision={() => loadPage({ cursor: cursorStack[cursorStack.length - 1] ?? null })}
       />
     </div>
   );
@@ -525,6 +531,7 @@ function UnmatchedPanel({ runId }) {
       <TransactionDrawer
         transactionId={selectedTransactionId}
         onClose={() => setSelectedTransactionId(null)}
+        context={{ kind: "unmatched", runId }}
       />
     </div>
   );
@@ -655,44 +662,18 @@ function ExceptionsPanel({ runId }) {
         />
       )}
 
-      <Drawer open={Boolean(detail)} onClose={() => setDetail(null)} label="Exception detail">
-        {detail && (
-          <div className="divide-y divide-border">
-            <DrawerSection>
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
-                <div className="col-span-2">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reason</dt>
-                  <dd className="mt-0.5"><StatusBadge kind="exception" value={detail.status} /></dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Issue</dt>
-                  <dd className="mt-0.5 text-sm font-medium text-foreground">
-                    {exceptionReasonLabel(detail.reasonCode)}
-                  </dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Engine detail</dt>
-                  <dd className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{detail.detail || "—"}</dd>
-                </div>
-                <DetailField label="Detected">{formatDateTime(detail.createdAt)}</DetailField>
-              </dl>
-            </DrawerSection>
-            {detail.transactionIds?.length > 0 && (
-              <DrawerSection title="Linked records">
-                <ul role="list" className="space-y-2">
-                  {detail.transactionIds.map((id) => (
-                    <li key={id}>
-                      <code className="block truncate rounded-md bg-muted px-2 py-1.5 font-mono text-xs text-foreground">
-                        {id}
-                      </code>
-                    </li>
-                  ))}
-                </ul>
-              </DrawerSection>
-            )}
-          </div>
-        )}
-      </Drawer>
+      <ExceptionDetailDrawer
+        key={detail?.id ?? "none"}
+        exception={detail}
+        onClose={() => setDetail(null)}
+        onStatusChange={(status) => {
+          setDetail((d) => (d ? { ...d, status } : d));
+          loadPage({ cursor: cursorStack[cursorStack.length - 1] ?? null });
+        }}
+        onNoteAdded={() =>
+          loadPage({ cursor: cursorStack[cursorStack.length - 1] ?? null })
+        }
+      />
     </div>
   );
 }

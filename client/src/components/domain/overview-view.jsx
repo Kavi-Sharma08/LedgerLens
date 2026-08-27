@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
+import { AccessRestricted } from "@/components/common/access-restricted";
+import { useDashboard } from "@/components/common/dashboard-context";
 import { StatusBadge, exceptionReasonLabel } from "@/components/domain/status-badge";
 import { getOverview } from "@/lib/api/overview";
 import { listRuns } from "@/lib/api/reconciliations";
@@ -21,6 +23,8 @@ import { cn } from "@/lib/utils";
  * and the latest run/exception feeds — nothing here is computed in the UI.
  */
 export function OverviewView({ greeting }) {
+  const { can } = useDashboard();
+  const canViewData = Boolean(can.viewData);
   const [summary, setSummary] = useState(null);
   const [runs, setRuns] = useState([]);
   const [exceptions, setExceptions] = useState([]);
@@ -28,6 +32,7 @@ export function OverviewView({ greeting }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (!canViewData) return;
     let cancelled = false;
     const controller = new AbortController();
 
@@ -57,7 +62,23 @@ export function OverviewView({ greeting }) {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [canViewData]);
+
+  if (!canViewData) {
+    return (
+      <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+        <header>
+          <h1 className="text-[28px] font-semibold tracking-tight text-foreground sm:text-[32px]">
+            {greeting}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-[15px]">
+            Welcome to your workspace.
+          </p>
+        </header>
+        <AccessRestricted />
+      </div>
+    );
+  }
 
   if (loading) return <OverviewSkeleton greeting={greeting} />;
 

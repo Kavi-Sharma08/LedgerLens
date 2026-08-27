@@ -1,4 +1,6 @@
 import { PageHeader } from "@/components/common/page-header";
+import { AccessGate } from "@/components/common/access-gate";
+import { AccessRestricted } from "@/components/common/access-restricted";
 import { ReconciliationsView } from "@/components/domain/reconciliations-view";
 
 export const metadata = { title: "Reconciliations" };
@@ -10,7 +12,9 @@ export default function ReconciliationsPage() {
         title="Reconciliations"
         description="Run comparisons between your sources and review what the engine finds."
       />
-      <ReconciliationsView />
+      <AccessGate capability="viewData" fallback={<AccessRestricted />}>
+        <ReconciliationsView />
+      </AccessGate>
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import { PageHeader } from "@/components/common/page-header";
+import { AccessGate } from "@/components/common/access-gate";
+import { AccessRestricted } from "@/components/common/access-restricted";
 import { AuditView } from "@/components/domain/audit-view";
 
 export const metadata = { title: "Audit Log" };
@@ -10,7 +12,9 @@ export default function AuditPage() {
         title="Audit Log"
         description="History of important actions in this workspace."
       />
-      <AuditView />
+      <AccessGate capability="viewAudit" fallback={<AccessRestricted />}>
+        <AuditView />
+      </AccessGate>
     </div>
   );
 }

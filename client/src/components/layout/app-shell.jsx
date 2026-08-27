@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
  * Authenticated application shell: fixed sidebar on desktop, slide-in drawer
  * on smaller screens. Session data arrives pre-validated from the server layout.
  */
-export function AppShell({ user, workspace, allWorkspaces, children }) {
+export function AppShell({ user, workspace, allWorkspaces, primaryNav, secondaryNav, children }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Escape closes the drawer; scroll is locked while open.
@@ -43,7 +43,7 @@ export function AppShell({ user, workspace, allWorkspaces, children }) {
       </div>
       <Separator />
       <div className="flex-1 overflow-y-auto p-3">
-        <SidebarNav onNavigate={() => setDrawerOpen(false)} />
+        <SidebarNav primary={primaryNav} secondary={secondaryNav} onNavigate={() => setDrawerOpen(false)} />
       </div>
       <Separator />
       <div className="p-3">

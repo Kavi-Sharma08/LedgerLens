@@ -1,4 +1,6 @@
 import { PageHeader } from "@/components/common/page-header";
+import { AccessGate } from "@/components/common/access-gate";
+import { AccessRestricted } from "@/components/common/access-restricted";
 import { ExceptionsView } from "@/components/domain/exceptions-view";
 
 export const metadata = { title: "Exceptions" };
@@ -10,7 +12,9 @@ export default function ExceptionsPage() {
         title="Exceptions"
         description="Issues the engine found in your data that need a human decision."
       />
-      <ExceptionsView />
+      <AccessGate capability="viewData" fallback={<AccessRestricted />}>
+        <ExceptionsView />
+      </AccessGate>
     </div>
   );
 }

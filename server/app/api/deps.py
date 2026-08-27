@@ -127,7 +127,7 @@ def require_permission(permission: str):
             raise ForbiddenError(message="You don't have access to this workspace.")
         if not member_has_permission(member.role, workspace.role_permissions, permission):
             raise ForbiddenError(
-                message=f"You don't have permission to do this. Missing: {permission}."
+                message="You don't have permission to do this in this workspace."
             )
         return member
     return _check

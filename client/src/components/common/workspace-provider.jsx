@@ -1,79 +1,70 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { listWorkspaces } from "@/lib/api/workspaces";
 
+const COOKIE_NAME = "ll-active-workspace";
+const MAX_AGE = 31536000; // 1 year
+
 /**
- * Ensures the ll-active-workspace cookie matches the workspace the server
- * layout resolved (serverWorkspaceId).
+ * Keeps the browser's ll-active-workspace cookie in sync with the workspace the
+ * server layout resolved (serverWorkspaceId).
  *
- * Runs once on mount inside the dashboard layout:
- *   - Cookie already equals the server-resolved workspace -> no-op.
- *   - Cookie missing or stale -> activate the correct workspace through
- *     /api/workspace/activate and reload so server components re-render with
- *     the corrected cookie (which also fixes a stale cookie left behind when
- *     a membership was removed).
- *   - No workspaces at all -> redirect to onboarding.
+ * When the layout resolves a workspace it hands the id down here. That id is
+ * authoritative (the layout verified membership against the server member
+ * list), so we write it to the cookie immediately on the client via
+ * useLayoutEffect. Layout effects run BEFORE the data views' passive effects,
+ * so every browser->backend fetch through /api/backend reads the correct
+ * workspace even on first load when the cookie was missing or stale — no flash
+ * of "No workspace selected" and no reliance on a full-page reload.
  *
- * This component renders nothing — it only performs side effects.
+ * If the layout could not resolve a workspace (e.g. the API was down), we fall
+ * back to listing workspaces and reconciling through /api/workspace/activate,
+ * or redirect to onboarding when the user has no workspaces.
  */
 export function WorkspaceProvider({ serverWorkspaceId, children }) {
-  const attemptedRef = useRef(false);
+  const syncedRef = useRef(false);
 
+  // Runs during commit, before any child passive effect that fetches data.
+  useLayoutEffect(() => {
+    if (!serverWorkspaceId || syncedRef.current) return;
+    syncedRef.current = true;
+    if (getCookie(COOKIE_NAME) !== serverWorkspaceId) {
+      document.cookie = `${COOKIE_NAME}=${serverWorkspaceId}; path=/; samesite=lax; max-age=${MAX_AGE}`;
+    }
+  }, [serverWorkspaceId]);
+
+  // Fallback only: the layout couldn't resolve a workspace (API unreachable).
   useEffect(() => {
+    if (serverWorkspaceId) return;
     let cancelled = false;
 
-    async function resolveWorkspace() {
-      const cookie = getCookie("ll-active-workspace");
-
-      // Cookie already matches the workspace the server rendered with.
-      if (cookie === serverWorkspaceId) return;
-
-      // Don't spin if activation keeps failing (e.g. API is down).
-      if (attemptedRef.current) return;
-      attemptedRef.current = true;
-
-      try {
-        const workspaces = await listWorkspaces();
+    listWorkspaces()
+      .then((workspaces) => {
         if (cancelled) return;
-
         if (!workspaces || workspaces.length === 0) {
-          // No workspaces at all — send to onboarding.
           window.location.replace("/onboarding");
           return;
         }
-
-        // Prefer the server-resolved workspace; otherwise the first available.
-        const target =
-          workspaces.find((ws) => ws.id === serverWorkspaceId) ?? workspaces[0];
-
-        if (cookie === target.id) return;
-
-        const res = await fetch("/api/workspace/activate", {
+        fetch("/api/workspace/activate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workspaceId: target.id }),
+          body: JSON.stringify({ workspaceId: workspaces[0].id }),
+        }).then((res) => {
+          if (cancelled) return;
+          if (res.ok) window.location.reload();
         });
+      })
+      .catch(() => {
+        // Leave things as-is; transient API failures shouldn't redirect.
+      });
 
-        if (cancelled) return;
-
-        if (res.ok && cookie !== target.id) {
-          // Reload so server components re-render with the new cookie.
-          window.location.reload();
-        }
-      } catch {
-        // Leave the cookie as-is; transient API failures shouldn't redirect.
-      }
-    }
-
-    resolveWorkspace();
     return () => {
       cancelled = true;
     };
   }, [serverWorkspaceId]);
 
-  // Render children immediately — the provider is non-blocking.
   return children;
 }
 

@@ -15,13 +15,25 @@ import { cn } from "@/lib/utils";
 export function Drawer({ open, onClose, label, children, widthClass = "max-w-xl" }) {
   const panelRef = useRef(null);
   const previouslyFocused = useRef(null);
+  // Keep the latest close handler without re-triggering the focus/lock effect.
+  // Callers often pass an inline arrow, whose identity changes every render;
+  // including it in the effect deps would re-run (and re-focus the panel) on
+  // every parent re-render — e.g. each keystroke in a notes input — stealing
+  // focus and making typing impossible.
+  const onCloseRef = useRef(onClose);
+
+  // Keep the latest close handler current outside of render. Effect deps stop
+  // at [onClose], so it never perturbs the focus/lock effect below.
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
     previouslyFocused.current = document.activeElement;
 
     function onKeyDown(event) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current();
     }
     document.addEventListener("keydown", onKeyDown);
     document.body.style.overflow = "hidden";
@@ -32,7 +44,7 @@ export function Drawer({ open, onClose, label, children, widthClass = "max-w-xl"
       document.body.style.overflow = "";
       previouslyFocused.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 
 import { PageHeader } from "@/components/common/page-header";
+import { AccessGate } from "@/components/common/access-gate";
+import { AccessRestricted } from "@/components/common/access-restricted";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TransactionsView } from "@/components/domain/transactions-view";
 
@@ -13,9 +15,11 @@ export default function TransactionsPage() {
         title="Transactions"
         description="Every normalized record across your financial sources."
       />
-      <Suspense fallback={<TransactionsSkeleton />}>
-        <TransactionsView />
-      </Suspense>
+      <AccessGate capability="viewData" fallback={<AccessRestricted />}>
+        <Suspense fallback={<TransactionsSkeleton />}>
+          <TransactionsView />
+        </Suspense>
+      </AccessGate>
     </div>
   );
 }

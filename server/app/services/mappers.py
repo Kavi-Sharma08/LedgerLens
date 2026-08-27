@@ -113,6 +113,8 @@ def to_transaction_public(txn: Transaction) -> TransactionPublic:
         transactionType=txn.transaction_type,
         status=txn.status,
         potentialDuplicates=[str(i) for i in (txn.potential_duplicate_ids or [])],
+        metadata=txn.metadata or {},
+        fingerprint=txn.fingerprint or "",
         createdAt=txn.created_at.isoformat() if txn.created_at else None,
     )
 

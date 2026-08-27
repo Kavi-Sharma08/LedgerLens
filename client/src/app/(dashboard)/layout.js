@@ -3,8 +3,13 @@ import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { WorkspaceProvider } from "@/components/common/workspace-provider";
+import { DashboardProvider } from "@/components/common/dashboard-context";
+import { buildDashboardProfile } from "@/lib/permissions";
 import { serverApi, ApiError } from "@/lib/api/client";
 import { auth } from "@/lib/auth";
+import { filterDashboardNav } from "@/lib/navigation";
+
+const ACTIVE_WORKSPACE_COOKIE = "ll-active-workspace";
 
 /**
  * Protected route boundary for the entire authenticated area.
@@ -15,12 +20,14 @@ import { auth } from "@/lib/auth";
  *
  * Workspace data arrives from FastAPI via trusted server-to-server calls.
  * The active workspace is determined by the ll-active-workspace cookie, which
- * the backend verifies membership for.
+ * the backend verifies membership for. When the cookie is missing or stale we
+ * resolve the correct workspace server-side and persist it to the cookie so
+ * every subsequent browser->backend call carries the same workspace the server
+ * rendered with — no stale/previous-workspace state leaks into data fetches.
  *
- * If the cookie workspace is invalid (deleted, user removed), we fall back
- * to the user's first available workspace and pass it to WorkspaceProvider,
- * which rewrites the cookie so subsequent API calls use the corrected workspace.
- * If the user has zero workspaces, we redirect to /onboarding.
+ * The signed-in member's role for the active workspace is resolved from the
+ * server member list and exposed through DashboardProvider so pages and the
+ * navigation render from server-authoritative permissions.
  */
 export default async function DashboardLayout({ children }) {
   const session = await auth();
@@ -37,7 +44,7 @@ export default async function DashboardLayout({ children }) {
 
   // Read active workspace from cookie
   const cookieStore = await cookies();
-  const activeWorkspaceId = cookieStore.get("ll-active-workspace")?.value;
+  const activeWorkspaceId = cookieStore.get(ACTIVE_WORKSPACE_COOKIE)?.value;
 
   let workspace = null;
   let allWorkspaces = [];
@@ -76,11 +83,54 @@ export default async function DashboardLayout({ children }) {
     redirect("/onboarding");
   }
 
+  // Persist the resolved workspace to the cookie so the server-rendered page
+  // and every browser->backend data fetch agree on the active workspace. The
+  // cookie itself cannot be written from this Server Component (Next.js
+  // restricts it to Server Actions/Route Handlers), so we hand the resolved
+  // id to WorkspaceProvider, which writes it on the client before data views
+  // fetch. This prevents "No workspace selected" / stale-workspace data even on
+  // first load when the cookie hasn't been written yet.
+  let profile = { role: null, rolePermissions: null, workspaceId: workspace?.id ?? null, can: {} };
+  let primaryNav = null;
+  let secondaryNav = null;
+
+  if (workspace?.id && session.user.id) {
+    let role = null;
+    try {
+      const members = await serverApi.get(`/api/workspaces/${workspace.id}/members`, {
+        session,
+        workspaceId: workspace.id,
+      });
+      const current = (members || []).find((m) => m.userId === session.user.id);
+      role = current?.role ?? null;
+    } catch {
+      // Could not resolve role (members API unreachable). Navigation renders
+      // conservatively and pages rely on their own server-side gating.
+    }
+
+    profile = buildDashboardProfile({
+      role,
+      rolePermissions: workspace.rolePermissions,
+      workspaceId: workspace.id,
+    });
+    const filtered = filterDashboardNav(profile.can);
+    primaryNav = filtered.primary;
+    secondaryNav = filtered.secondary;
+  }
+
   return (
     <WorkspaceProvider serverWorkspaceId={workspace?.id ?? null}>
-      <AppShell user={user} workspace={workspace} allWorkspaces={allWorkspaces}>
-        {children}
-      </AppShell>
+      <DashboardProvider value={profile}>
+        <AppShell
+          user={user}
+          workspace={workspace}
+          allWorkspaces={allWorkspaces}
+          primaryNav={primaryNav}
+          secondaryNav={secondaryNav}
+        >
+          {children}
+        </AppShell>
+      </DashboardProvider>
     </WorkspaceProvider>
   );
 }
