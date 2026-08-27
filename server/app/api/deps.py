@@ -35,7 +35,7 @@ from fastapi import Depends, Request
 from ..core.config import get_settings
 from ..core.database import get_database
 from ..core.errors import ForbiddenError, NotFoundError, UnauthorizedError
-from ..models.enums import MembershipStatus, WorkspaceRole, user_has_permission
+from ..models.enums import MembershipStatus, WorkspaceRole, member_has_permission
 from ..models.user import User
 from ..models.workspace import Workspace
 from ..models.workspace_member import WorkspaceMember
@@ -113,7 +113,7 @@ def require_permission(permission: str):
     Usage in routes:
         @router.post("/sources")
         async def create_source(
-            _=Depends(require_permission("create_source")),
+            _=Depends(require_permission("manage_sources")),
             ...
         )
     """
@@ -125,9 +125,9 @@ def require_permission(permission: str):
         member = await member_repo.get_member(db, workspace.id, current_user.id)
         if member is None or member.status != MembershipStatus.ACTIVE:
             raise ForbiddenError(message="You don't have access to this workspace.")
-        if not user_has_permission(member.role, permission):
+        if not member_has_permission(member.role, workspace.role_permissions, permission):
             raise ForbiddenError(
-                message=f"You don't have permission to do this. Required role: {permission}."
+                message=f"You don't have permission to do this. Missing: {permission}."
             )
         return member
     return _check

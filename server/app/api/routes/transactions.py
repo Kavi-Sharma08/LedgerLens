@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from ...api.deps import get_current_workspace
+from ...api.deps import get_current_workspace, require_permission
 from ...core.database import get_database
 from ...core.errors import AppError
 from ...models.enums import Direction, TransactionStatus, TransactionType
@@ -29,6 +29,7 @@ async def list_transactions(
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     """Cursor-paginated canonical transactions with optional filters.
 
@@ -66,6 +67,7 @@ async def get_transaction(
     transaction_id: str,
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     from ...core.errors import TransactionNotFoundError
     from bson import ObjectId
@@ -87,6 +89,7 @@ async def list_transaction_matches(
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     """Reconciliation evidence for one transaction: the match groups it
     belongs to, newest first. Powers the transaction detail drawer."""

@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { DetailField, DrawerSection } from "@/components/common/drawer";
 import { SettingsForm } from "@/components/domain/settings-form";
 import { WorkspaceMembersSection } from "@/components/domain/workspace-members-section";
+import { WorkspacePermissionsSection } from "@/components/domain/workspace-permissions-section";
 import { WorkspaceNameEditor } from "@/components/domain/workspace-name-editor";
 import { PasswordSection } from "@/components/domain/password-section";
 
@@ -81,6 +82,17 @@ export default async function SettingsPage() {
         <WorkspaceMembersSection
           workspaceId={workspace.id}
           currentUserRole={currentUserRole}
+          currentUserId={session?.user?.id}
+          rolePermissions={workspace.rolePermissions}
+        />
+      )}
+
+      {/* Role permissions (owner-controlled) */}
+      {workspace?.id && (
+        <WorkspacePermissionsSection
+          workspaceId={workspace.id}
+          currentUserRole={currentUserRole}
+          rolePermissions={workspace.rolePermissions}
         />
       )}
 

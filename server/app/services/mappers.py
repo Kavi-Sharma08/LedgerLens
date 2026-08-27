@@ -32,7 +32,13 @@ def to_user_public(user) -> UserPublic:
 def to_workspace_public(workspace) -> WorkspacePublic | None:
     if workspace is None or workspace.id is None:
         return None
-    return WorkspacePublic(id=str(workspace.id), name=workspace.name, slug=workspace.slug)
+    return WorkspacePublic(
+        id=str(workspace.id),
+        name=workspace.name,
+        slug=workspace.slug,
+        rolePermissions=workspace.role_permissions,
+        ownerId=str(workspace.owner_id) if workspace.owner_id else None,
+    )
 
 
 def to_exception_public_with_assignee(exc) -> ExceptionPublic:

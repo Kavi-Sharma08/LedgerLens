@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from ...api.deps import get_current_user, get_current_workspace
+from ...api.deps import get_current_user, get_current_workspace, require_permission
 from ...core.database import get_database
 from ...core.errors import AppError
 from ...models.enums import SourceType
@@ -22,6 +22,7 @@ async def create_financial_source(
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
     _: User = Depends(get_current_user),
+    __=Depends(require_permission("manage_sources")),
 ):
     """Register a logical financial source (bank, gateway, ledger...)."""
     source = await create_source(
@@ -43,6 +44,7 @@ async def list_financial_sources(
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     try:
         page = await source_repository.list_sources(
@@ -66,6 +68,7 @@ async def get_financial_source(
     source_id: str,
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     source = await source_repository.get_by_id(db, workspace.id, source_id)
     return to_source_public(source)

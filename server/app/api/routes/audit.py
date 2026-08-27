@@ -19,7 +19,7 @@ async def list_audit_logs(
     limit: int | None = Query(default=None, ge=1, le=MAX_PAGE_SIZE),
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
-    _=Depends(require_permission("view_audit")),
+    _=Depends(require_permission("view_audit_log")),
     db=Depends(get_database),
 ):
     """Workspace audit feed. Requires ADMIN+ role."""

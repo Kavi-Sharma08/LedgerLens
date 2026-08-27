@@ -87,13 +87,17 @@ async def remove_member(db, workspace_id: ObjectId | str, user_id: ObjectId | st
 
 
 async def has_permission(db, workspace_id: ObjectId | str, user_id: ObjectId | str, permission: str) -> bool:
-    """Check whether the user has the named permission in this workspace."""
-    from ..models.enums import user_has_permission
+    """Check whether the user has the named permission in this workspace,
+    taking the owner-controlled per-role grants into account."""
+    from ..models.enums import member_has_permission
+    from ..repositories import workspace_repository
 
     member = await get_member(db, workspace_id, user_id)
     if member is None or member.status != MembershipStatus.ACTIVE:
         return False
-    return user_has_permission(member.role, permission)
+    workspace = await workspace_repository.get_by_id(db, workspace_id)
+    role_permissions = workspace.role_permissions if workspace else None
+    return member_has_permission(member.role, role_permissions, permission)
 
 
 async def has_workspace_access(db, workspace_id: ObjectId | str, user_id: ObjectId | str) -> bool:

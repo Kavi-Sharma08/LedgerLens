@@ -39,8 +39,30 @@ def db_env():
 
 @pytest.fixture()
 def workspace(db_env):
+    import asyncio
+    from datetime import datetime, timezone
+
+    from app.models.enums import MembershipStatus, WorkspaceRole
+    from app.models.workspace_member import WorkspaceMember
+
     ws = Workspace(name="Test Co", slug="test-co", owner_id=USER_ID,
                    id=ObjectId("00000000000000000000a001"))
+
+    # Seed the actor as OWNER so permission enforcement (require_permission)
+    # passes for the shared endpoints being exercised here.
+    async def _seed():
+        await db_env["workspace_members"].insert_one(
+            WorkspaceMember(
+                workspace_id=ws.id,
+                user_id=USER_ID,
+                role=WorkspaceRole.OWNER,
+                status=MembershipStatus.ACTIVE,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            ).to_document()
+        )
+
+    asyncio.run(_seed())
     return ws
 
 

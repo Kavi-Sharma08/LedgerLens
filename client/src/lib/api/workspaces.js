@@ -34,3 +34,19 @@ export async function updateMemberRole(workspaceId, userId, role, { signal } = {
 export async function removeMember(workspaceId, userId, { signal } = {}) {
   return api.delete(`/api/workspaces/${workspaceId}/members/${userId}`, { signal });
 }
+
+export async function readWorkspacePermissions(workspaceId, { signal } = {}) {
+  return api.get(`/api/workspaces/${workspaceId}/permissions`, { signal });
+}
+
+export async function updateWorkspacePermissions(
+  workspaceId,
+  { role, permissions },
+  { signal } = {}
+) {
+  return api.patch(
+    `/api/workspaces/${workspaceId}/permissions`,
+    { role, permissions },
+    { signal }
+  );
+}

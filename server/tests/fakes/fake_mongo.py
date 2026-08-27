@@ -232,6 +232,28 @@ class FakeCollection:
                 break  # update_one affects at most one document
         return type("UpdateResult", (), {"modified_count": modified})()
 
+    async def find_one_and_update(self, query: dict, update: dict, return_document=False):
+        matched = None
+        index = None
+        for i, doc in enumerate(self.docs):
+            if _matches(doc, query):
+                matched = doc
+                index = i
+                break
+        if matched is None:
+            return None
+        if return_document:  # ReturnDocument.AFTER -> apply then return updated
+            if "$set" in update:
+                matched.update(copy.deepcopy(update["$set"]))
+            if "$addToSet" in update:
+                for field, value in update["$addToSet"].items():
+                    current = matched.setdefault(field, [])
+                    if value not in current:
+                        current.append(copy.deepcopy(value))
+            self.database.store[self.name][index] = matched
+            return copy.deepcopy(matched)
+        return copy.deepcopy(matched)  # ReturnDocument.BEFORE
+
     async def delete_many(self, query: dict):
         before = len(self.docs)
         self.database.store[self.name] = [d for d in self.docs if not _matches(d, query)]

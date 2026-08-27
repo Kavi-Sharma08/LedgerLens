@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, Request
 
-from ...api.deps import get_current_workspace
+from ...api.deps import get_current_workspace, require_permission
 from ...core.database import get_database
 from ...core.errors import AppError
 from ...models.workspace import Workspace
@@ -22,6 +22,7 @@ async def upload_source_file_route(
     mimeType: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("upload_files")),
 ):
     """Import a financial file (CSV/JSONL) for a source.
 
@@ -59,6 +60,7 @@ async def list_files_for_source(
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     source = await _get_source(db, workspace, sourceId)
     try:
@@ -79,6 +81,7 @@ async def get_source_file(
     file_id: str,
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     source_file = await source_file_repository.get_by_id(db, workspace.id, file_id)
     return to_file_public(source_file)

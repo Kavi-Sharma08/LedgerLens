@@ -26,6 +26,7 @@ async def list_workspace_exceptions(
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     try:
         page = await exception_repository.list_for_workspace(
@@ -44,7 +45,7 @@ async def list_workspace_exceptions(
 async def assign_exception(
     exception_id: str,
     body: dict,
-    membership=Depends(require_permission("resolve_exception")),
+    membership=Depends(require_permission("manage_exceptions")),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
 ):
@@ -86,7 +87,7 @@ async def assign_exception(
 async def update_exception_status(
     exception_id: str,
     body: dict,
-    membership=Depends(require_permission("resolve_exception")),
+    membership=Depends(require_permission("manage_exceptions")),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
 ):
@@ -137,7 +138,7 @@ async def update_exception_status(
 async def add_exception_note(
     exception_id: str,
     body: dict,
-    membership=Depends(require_permission("resolve_exception")),
+    membership=Depends(require_permission("manage_exceptions")),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
 ):

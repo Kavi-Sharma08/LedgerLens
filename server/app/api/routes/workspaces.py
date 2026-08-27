@@ -9,7 +9,13 @@ from pydantic import BaseModel
 from ...api.deps import WORKSPACE_ID_HEADER, get_current_user
 from ...core.database import get_database
 from ...core.errors import AppError, ForbiddenError, NotFoundError
-from ...models.enums import InvitationStatus, MembershipStatus, WorkspaceRole
+from ...models.enums import (
+    ALL_PERMISSIONS,
+    DEFAULT_ROLE_PERMISSIONS,
+    InvitationStatus,
+    MembershipStatus,
+    WorkspaceRole,
+)
 from ...models.invitation import Invitation
 from ...models.user import User
 from ...models.workspace import Workspace
@@ -18,6 +24,7 @@ from ...repositories import user_repository
 from ...repositories import workspace_repository
 from ...repositories import workspace_member_repository as member_repo
 from ...schemas.user import (
+    MemberPermissionsUpdate,
     WorkspaceCreate,
     WorkspaceMemberPublic,
     WorkspacePublic,
@@ -109,6 +116,9 @@ async def create_workspace(
         name=name,
         slug=slug,
         owner_id=current_user.id,
+        role_permissions={
+            role: list(perms) for role, perms in DEFAULT_ROLE_PERMISSIONS.items()
+        },
         created_at=now,
         updated_at=now,
     )
@@ -180,6 +190,74 @@ async def update_workspace_settings(
     return to_workspace_public(workspace)
 
 
+@router.get("/{workspace_id}/permissions", response_model=WorkspacePublic)
+async def read_workspace_permissions(
+    workspace_id: str,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_database),
+):
+    """Read the owner-controlled per-role grants. Any member with view access
+    can see them (they are not secrets), but only the owner may change them."""
+    access = await member_repo.has_workspace_access(db, workspace_id, current_user.id)
+    if not access:
+        raise NotFoundError(message="Workspace not found.")
+    return to_workspace_public(await workspace_repository.get_by_id(db, workspace_id))
+
+
+@router.patch("/{workspace_id}/permissions", response_model=WorkspacePublic)
+async def update_workspace_permissions(
+    workspace_id: str,
+    payload: MemberPermissionsUpdate,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_database),
+):
+    """Owner-controlled capability management.
+
+    Only the OWNER may change which permissions are available to the ADMIN and
+    MEMBER roles. OWNER retains every permission regardless. Grants live at the
+    workspace/role level, so changing a member's role never silently resets
+    unrelated capability configuration."""
+    member = await member_repo.get_member(db, workspace_id, current_user.id)
+    if member is None or member.status != MembershipStatus.ACTIVE:
+        raise ForbiddenError(message="You don't have access to this workspace.")
+    if member.role != WorkspaceRole.OWNER:
+        raise ForbiddenError(message="Only the workspace owner can manage workspace permissions.")
+
+    try:
+        role = WorkspaceRole(payload.role)
+    except ValueError:
+        raise AppError(status_code=422, message=f"Invalid role: {payload.role}. Use ADMIN, MEMBER, or VIEWER.")
+
+    if role == WorkspaceRole.OWNER:
+        raise AppError(status_code=422, message="The owner always retains every permission.")
+
+    unknown = set(payload.permissions) - ALL_PERMISSIONS
+    if unknown:
+        raise AppError(status_code=422, message=f"Unknown permission(s): {', '.join(sorted(unknown))}.")
+
+    workspace_doc = await workspace_repository.get_by_id(db, workspace_id)
+    role_permissions = dict(workspace_doc.role_permissions or DEFAULT_ROLE_PERMISSIONS)
+    role_permissions[role.value] = sorted(set(payload.permissions))
+
+    workspace = await workspace_repository.update_workspace(
+        db,
+        workspace_id,
+        {"rolePermissions": role_permissions},
+    )
+
+    await log_audit(
+        db,
+        workspace_id=workspace.id,
+        user_id=current_user.id,
+        action="workspace_permissions_changed",
+        entity_type="workspace",
+        entity_id=str(workspace.id),
+        details={"role": role.value, "permissions": sorted(set(payload.permissions))},
+    )
+
+    return to_workspace_public(workspace)
+
+
 @router.get("/{workspace_id}/members", response_model=list[WorkspaceMemberPublic])
 async def list_members(
     workspace_id: str,
@@ -193,6 +271,12 @@ async def list_members(
         raise NotFoundError(message="Workspace not found.")
 
     members = await member_repo.list_members_for_workspace(db, workspace_id)
+
+    # Surface the owner-controlled per-role grants so the UI can render the
+    # Members/Permissions controls from authoritative server data.
+    from ...repositories import workspace_repository
+    workspace = await workspace_repository.get_by_id(db, workspace_id)
+    role_permissions = workspace.role_permissions if workspace else None
 
     # Enrich with user names/emails
     from ...repositories import user_repository
@@ -209,6 +293,7 @@ async def list_members(
             status=m.status.value,
             joinedAt=m.joined_at.isoformat() if m.joined_at else None,
             createdAt=m.created_at.isoformat() if m.created_at else None,
+            rolePermissions=role_permissions,
         ))
     return results
 
@@ -221,27 +306,53 @@ async def update_member_role(
     current_user: User = Depends(get_current_user),
     db=Depends(get_database),
 ):
-    """Change a member's role. Requires MANAGE_MEMBERS permission (ADMIN+)."""
-    perm = await member_repo.has_permission(db, workspace_id, current_user.id, "manage_members")
-    if not perm:
+    """Change a member's role. Requires MANAGE_MEMBERS permission.
+
+    Only the OWNER (or an authorized member) may change roles, but nobody may
+    modify the OWNER, and nobody may change their own role or grant themselves
+    higher permissions. Ownership can never be transferred via this endpoint.
+    """
+    is_self = str(current_user.id) == user_id
+    actor = await member_repo.get_member(db, workspace_id, current_user.id)
+    if actor is None or actor.status != MembershipStatus.ACTIVE:
+        raise ForbiddenError(message="You don't have access to this workspace.")
+
+    # Only users with manage_members may change roles.
+    if not await member_repo.has_permission(db, workspace_id, current_user.id, "manage_members"):
         raise ForbiddenError(message="You don't have permission to manage members.")
+
+    target_member = await member_repo.get_member(db, workspace_id, user_id)
+    if target_member is None:
+        raise NotFoundError(message="That user isn't a member of this workspace.")
 
     new_role_str = payload.get("role", "")
     try:
         new_role = WorkspaceRole(new_role_str)
     except ValueError:
-        raise AppError(status_code=422, message=f"Invalid role: {new_role_str}. Use OWNER, ADMIN, MEMBER, or VIEWER.")
+        raise AppError(status_code=422, message=f"Invalid role: {new_role_str}. Use ADMIN, MEMBER, or VIEWER.")
 
+    # The OWNER can never be demoted, removed, or made non-owner.
+    if target_member.role == WorkspaceRole.OWNER:
+        raise ForbiddenError(message="Cannot change the role of the workspace owner.")
+
+    # Ownership is never transferable through role changes, and only the OWNER
+    # may ever hold the OWNER role.
     if new_role == WorkspaceRole.OWNER:
         raise AppError(status_code=422, message="Ownership cannot be transferred via role change.")
 
-    # Cannot downgrade an OWNER
-    target_member = await member_repo.get_member(db, workspace_id, user_id)
-    if target_member and target_member.role == WorkspaceRole.OWNER:
-        raise ForbiddenError(message="Cannot change the role of the workspace owner.")
+    # A member can never change their own role, and ADMIN cannot promote itself.
+    if is_self:
+        raise ForbiddenError(message="You cannot change your own role.")
+
+    # Only the OWNER can assign the ADMIN role (prevents privilege escalation).
+    if new_role == WorkspaceRole.ADMIN and actor.role != WorkspaceRole.OWNER:
+        raise ForbiddenError(message="Only the workspace owner can promote someone to Admin.")
 
     updated = await member_repo.update_member_role(db, workspace_id, user_id, new_role)
 
+    # With owner-controlled permissions, a role change automatically re-applies
+    # the grants configured for the new role; any custom per-member config is
+    # never silently reset because grants live at the workspace/role level.
     await log_audit(
         db,
         workspace_id=ObjectId(workspace_id),
@@ -251,7 +362,7 @@ async def update_member_role(
         entity_id=user_id,
         details={
             "targetUserId": user_id,
-            "oldRole": target_member.role.value if target_member else None,
+            "oldRole": target_member.role.value,
             "newRole": new_role.value,
         },
     )
@@ -266,18 +377,26 @@ async def remove_member(
     current_user: User = Depends(get_current_user),
     db=Depends(get_database),
 ):
-    """Remove a member from the workspace. Requires MANAGE_MEMBERS (ADMIN+).
-    Members can remove themselves (leave workspace)."""
+    """Remove a member from the workspace. Requires MANAGE_MEMBERS.
+    A member may always leave (remove themselves) from a workspace they joined.
+    Nobody may remove the OWNER except the OWNER leaving is not allowed either —
+    the owner must always remain a member (single-owner guarantee)."""
     is_self = str(current_user.id) == user_id
+
+    actor = await member_repo.get_member(db, workspace_id, current_user.id)
+    if actor is None or actor.status != MembershipStatus.ACTIVE:
+        raise ForbiddenError(message="You don't have access to this workspace.")
+
     if not is_self:
-        perm = await member_repo.has_permission(db, workspace_id, current_user.id, "manage_members")
-        if not perm:
+        if not await member_repo.has_permission(db, workspace_id, current_user.id, "manage_members"):
             raise ForbiddenError(message="You don't have permission to remove members.")
 
     target = await member_repo.get_member(db, workspace_id, user_id)
     if target is None:
         raise NotFoundError(message="That user isn't a member of this workspace.")
-    if target.role == WorkspaceRole.OWNER and not is_self:
+
+    # The OWNER cannot be removed — there must always be exactly one owner.
+    if target.role == WorkspaceRole.OWNER:
         raise ForbiddenError(message="Cannot remove the workspace owner.")
 
     await member_repo.remove_member(db, workspace_id, user_id)
@@ -345,7 +464,11 @@ async def create_invitation(
     current_user: User = Depends(get_current_user),
     db=Depends(get_database),
 ):
-    """Send an invitation to join a workspace. Requires invite_members permission (ADMIN+)."""
+    """Send an invitation to join a workspace. Requires invite_members permission."""
+    actor = await member_repo.get_member(db, workspace_id, current_user.id)
+    if actor is None or actor.status != MembershipStatus.ACTIVE:
+        raise ForbiddenError(message="You don't have access to this workspace.")
+
     perm = await member_repo.has_permission(db, workspace_id, current_user.id, "invite_members")
     if not perm:
         raise ForbiddenError(message="You don't have permission to invite members.")
@@ -361,6 +484,10 @@ async def create_invitation(
 
     if role == WorkspaceRole.OWNER:
         raise AppError(status_code=422, message="Cannot invite someone as Owner.")
+
+    # Only the OWNER may invite new Admins — ADMIN cannot grant a peer Admins.
+    if role == WorkspaceRole.ADMIN and actor.role != WorkspaceRole.OWNER:
+        raise ForbiddenError(message="Only the workspace owner can invite someone as Admin.")
 
     existing_user = await user_repository.get_by_email(db, email)
     if existing_user:
@@ -413,6 +540,16 @@ async def create_invitation(
     except Exception:
         import logging
         logging.getLogger("ledgerlens.invitations").exception("Failed to send invitation email")
+
+    await log_audit(
+        db,
+        workspace_id=ObjectId(workspace_id),
+        user_id=current_user.id,
+        action="member_invited",
+        entity_type="invitation",
+        entity_id=str(invitation.id),
+        details={"email": email, "role": role.value},
+    )
 
     return {
         "id": str(invitation.id),

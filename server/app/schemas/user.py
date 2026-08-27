@@ -14,6 +14,8 @@ class WorkspacePublic(BaseModel):
     id: str
     name: str
     slug: str
+    rolePermissions: dict | None = None
+    ownerId: str | None = None
 
 
 class WorkspaceMemberPublic(BaseModel):
@@ -26,6 +28,7 @@ class WorkspaceMemberPublic(BaseModel):
     status: str
     joinedAt: str | None = None
     createdAt: str | None = None
+    rolePermissions: dict | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -35,6 +38,11 @@ class WorkspaceCreate(BaseModel):
 
 class MemberRoleUpdate(BaseModel):
     role: str  # ADMIN | MEMBER | VIEWER
+
+
+class MemberPermissionsUpdate(BaseModel):
+    role: str  # the role whose grants are changing (ADMIN | MEMBER | VIEWER)
+    permissions: list[str]
 
 
 class WorkspaceSettingsUpdate(BaseModel):

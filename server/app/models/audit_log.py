@@ -8,10 +8,14 @@ from .user import utcnow
 
 # Named audit actions — use these constants for consistency across the codebase.
 WORKSPACE_CREATED = "workspace_created"
+WORKSPACE_UPDATED = "workspace_updated"
 MEMBER_INVITED = "member_invited"
 MEMBER_ACCEPTED = "member_accepted"
 ROLE_CHANGED = "role_changed"
+MEMBER_PERMISSIONS_CHANGED = "member_permissions_changed"
 MEMBER_REMOVED = "member_removed"
+WORKSPACE_PERMISSIONS_CHANGED = "workspace_permissions_changed"
+OWNERSHIP_CHANGED = "ownership_changed"
 SOURCE_CREATED = "source_created"
 FILE_UPLOADED = "file_uploaded"
 RECONCILIATION_STARTED = "reconciliation_started"

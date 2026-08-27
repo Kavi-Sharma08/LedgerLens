@@ -123,33 +123,74 @@ class InvitationStatus(str, Enum):
     REVOKED = "REVOKED"
 
 
-# Role → permission mapping.  A role inherits all permissions from roles
-# below it in the hierarchy (OWNER > ADMIN > MEMBER > VIEWER).
-ROLE_HIERARCHY: dict[WorkspaceRole, int] = {
-    WorkspaceRole.OWNER: 40,
-    WorkspaceRole.ADMIN: 30,
-    WorkspaceRole.MEMBER: 20,
-    WorkspaceRole.VIEWER: 10,
+# --- Workspace authorization model ----------------------------------------
+#
+# Roles are fixed: OWNER, ADMIN, MEMBER, VIEWER. The OWNER always holds every
+# permission. For the other roles, what each role can actually DO is a
+# workspace-level, owner-controlled configuration (Workspace.role_permissions).
+# This keeps the enforceable capability list on the server, never in the UI.
+
+# Every permission an OWNER always holds. The REST of the system grants only
+# permissions from this catalog; anything else is denied by default.
+PERMISSIONS = frozenset({
+    "view_data",              # view transactions / sources / matches / overview
+    "manage_sources",         # create/manage financial sources
+    "upload_files",           # upload / manage source files
+    "run_reconciliation",     # start a reconciliation run
+    "approve_matches",        # approve a match
+    "reject_matches",         # reject a match
+    "manage_exceptions",      # assign / change status / add notes on exceptions
+    "invite_members",         # send invitations
+    "manage_members",         # change roles / remove members
+    "view_audit_log",         # read the audit feed
+    "manage_workspace_settings",  # rename workspace / manage permissions
+})
+
+ALL_PERMISSIONS = PERMISSIONS  # every member of the catalog is OWNER-grantable
+
+# Baseline grants used to seed a new workspace's role_permissions. The OWNER
+# can tighten/loosen these per role. MEMBER and VIEWER start read-only:
+# operational actions are only enabled when the owner explicitly grants them.
+DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
+    WorkspaceRole.ADMIN.value: [
+        "view_data",
+        "manage_sources",
+        "upload_files",
+        "run_reconciliation",
+        "approve_matches",
+        "reject_matches",
+        "manage_exceptions",
+        "invite_members",
+        "manage_members",
+        "view_audit_log",
+    ],
+    WorkspaceRole.MEMBER.value: [
+        "view_data",
+    ],
+    WorkspaceRole.VIEWER.value: [
+        "view_data",
+    ],
 }
 
-# Named permissions.  Checked via `user_has_permission(role, perm)`.
-PERMISSIONS = {
-    "manage_workspace": WorkspaceRole.OWNER,
-    "manage_members": WorkspaceRole.ADMIN,
-    "invite_members": WorkspaceRole.ADMIN,
-    "create_source": WorkspaceRole.MEMBER,
-    "upload_file": WorkspaceRole.MEMBER,
-    "run_reconciliation": WorkspaceRole.MEMBER,
-    "approve_match": WorkspaceRole.MEMBER,
-    "resolve_exception": WorkspaceRole.MEMBER,
-    "view_data": WorkspaceRole.VIEWER,
-    "view_audit": WorkspaceRole.ADMIN,
-}
 
+def member_has_permission(
+    role: WorkspaceRole | str,
+    role_permissions: dict | None,
+    permission: str,
+) -> bool:
+    """Whether a member with *role* has *permission* given the workspace's
+    owner-controlled per-role grants.
 
-def user_has_permission(role: WorkspaceRole, permission: str) -> bool:
-    """Check whether *role* grants *permission* using the hierarchy."""
-    required = PERMISSIONS.get(permission)
-    if required is None:
-        return False
-    return ROLE_HIERARCHY.get(role, 0) >= ROLE_HIERARCHY.get(required, 0)
+    The OWNER always retains every permission. Unknown permissions are denied.
+    """
+    role_value = role.value if isinstance(role, WorkspaceRole) else str(role)
+    if role_value == WorkspaceRole.OWNER.value:
+        return permission in ALL_PERMISSIONS
+    # An empty/None workspace document (pre-permission-model workspaces) falls
+    # back to the baseline grants. Once the owner has configured grants the
+    # stored value is authoritative — a missing role key means "no grants".
+    if role_permissions is None or role_permissions == {}:
+        grants = DEFAULT_ROLE_PERMISSIONS.get(role_value, []) or []
+    else:
+        grants = role_permissions.get(role_value, []) or []
+    return permission in grants

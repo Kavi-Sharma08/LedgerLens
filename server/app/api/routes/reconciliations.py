@@ -23,6 +23,7 @@ async def create_reconciliation_run(
     workspace: Workspace = Depends(get_current_workspace),
     current_user: User = Depends(get_current_user),
     db=Depends(get_database),
+    __=Depends(require_permission("run_reconciliation")),
 ):
     """Run a deterministic reconciliation across the given sources.
 
@@ -58,6 +59,7 @@ async def list_reconciliation_runs(
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     try:
         page = await reconciliation_run_repository.list_runs(
@@ -77,6 +79,7 @@ async def get_reconciliation_run(
     run_id: str,
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     run = await reconciliation_run_repository.get_by_id(db, workspace.id, run_id)
     return to_run_public(run)
@@ -90,6 +93,7 @@ async def list_run_matches(
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     from ...repositories import match_repository
     from bson import ObjectId
@@ -124,6 +128,7 @@ async def list_run_unmatched(
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     """Transactions from this run's source scope that ended without a match."""
     from ...services.reconciliation_service import list_run_unmatched
@@ -149,6 +154,7 @@ async def list_run_exceptions(
     cursor: str | None = Query(default=None),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     from bson import ObjectId
 
@@ -177,7 +183,7 @@ async def approve_match(
     run_id: str,
     match_id: str,
     body: dict | None = None,
-    membership=Depends(require_permission("approve_match")),
+    membership=Depends(require_permission("approve_matches")),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
 ):
@@ -216,7 +222,7 @@ async def reject_match(
     run_id: str,
     match_id: str,
     body: dict | None = None,
-    membership=Depends(require_permission("approve_match")),
+    membership=Depends(require_permission("reject_matches")),
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
 ):

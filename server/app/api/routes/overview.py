@@ -6,7 +6,7 @@ outcome of the most recent reconciliation (if any)."""
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from ...api.deps import get_current_workspace
+from ...api.deps import get_current_workspace, require_permission
 from ...core.database import get_database
 from ...models.workspace import Workspace
 from ...repositories import (
@@ -32,6 +32,7 @@ class OverviewPublic(BaseModel):
 async def get_overview(
     workspace: Workspace = Depends(get_current_workspace),
     db=Depends(get_database),
+    __=Depends(require_permission("view_data")),
 ):
     total_transactions = await transaction_repository.count_transactions(
         db, workspace.id, transaction_repository.TransactionFilter()

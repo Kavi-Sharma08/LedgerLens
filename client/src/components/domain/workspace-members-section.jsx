@@ -30,6 +30,7 @@ import {
   updateMemberRole,
   removeMember,
 } from "@/lib/api/workspaces";
+import { hasPermission } from "@/lib/permissions";
 import {
   inviteMember,
   listInvitations,
@@ -47,8 +48,6 @@ const INVITE_ROLE_OPTIONS = [
   { value: "MEMBER", label: "Member" },
   { value: "VIEWER", label: "Viewer" },
 ];
-
-const ROLE_OPTIONS = ["ADMIN", "MEMBER", "VIEWER"];
 
 function initials(name) {
   if (!name) return "?";
@@ -148,7 +147,12 @@ function InviteDialog({ workspaceId, open, onOpenChange, onInvited }) {
   );
 }
 
-export function WorkspaceMembersSection({ workspaceId, currentUserRole }) {
+export function WorkspaceMembersSection({
+  workspaceId,
+  currentUserRole,
+  currentUserId,
+  rolePermissions,
+}) {
   const [members, setMembers] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -156,7 +160,11 @@ export function WorkspaceMembersSection({ workspaceId, currentUserRole }) {
   const [acting, setActing] = useState(null);
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const canInvite = currentUserRole === "OWNER" || currentUserRole === "ADMIN";
+  // Member API calls are just UI affordances; the backend re-enforces each
+  // permission. These flags only hide/show controls to keep the surface honest.
+  const canInvite = hasPermission(currentUserRole, rolePermissions, "invite_members");
+  const canManage = hasPermission(currentUserRole, rolePermissions, "manage_members");
+  const currentUserIsOwner = currentUserRole === "OWNER";
 
   const loadData = useCallback(
     ({ signal, silent = false } = {}) => {
@@ -272,6 +280,9 @@ export function WorkspaceMembersSection({ workspaceId, currentUserRole }) {
             {members.map((member) => {
               const roleInfo = ROLE_LABELS[member.role] || ROLE_LABELS.MEMBER;
               const isOwner = member.role === "OWNER";
+              const isSelf = member.userId === currentUserId;
+              const showMenu =
+                !isOwner && (isSelf || (canManage && !isSelf));
               return (
                 <li
                   key={member.id}
@@ -292,7 +303,7 @@ export function WorkspaceMembersSection({ workspaceId, currentUserRole }) {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant={roleInfo.variant}>{roleInfo.label}</Badge>
-                    {!isOwner && (
+                    {showMenu && (
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -314,25 +325,54 @@ export function WorkspaceMembersSection({ workspaceId, currentUserRole }) {
                           )}
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-44">
-                          {ROLE_OPTIONS.filter((r) => r !== member.role).map(
-                            (role) => (
-                              <DropdownMenuItem
-                                key={role}
-                                onClick={() =>
-                                  handleChangeRole(member.userId, role)
-                                }
-                              >
-                                Change to {ROLE_LABELS[role]?.label || role}
-                              </DropdownMenuItem>
-                            )
+                          {canManage && !isSelf && (
+                            <>
+                              {currentUserIsOwner && member.role !== "ADMIN" && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleChangeRole(member.userId, "ADMIN")
+                                  }
+                                >
+                                  Change to Admin
+                                </DropdownMenuItem>
+                              )}
+                              {member.role !== "MEMBER" && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleChangeRole(member.userId, "MEMBER")
+                                  }
+                                >
+                                  Change to Member
+                                </DropdownMenuItem>
+                              )}
+                              {member.role !== "VIEWER" && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleChangeRole(member.userId, "VIEWER")
+                                  }
+                                >
+                                  Change to Viewer
+                                </DropdownMenuItem>
+                              )}
+                            </>
                           )}
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => handleRemove(member.userId)}
-                          >
-                            <UserMinus className="size-4" aria-hidden="true" />
-                            Remove from workspace
-                          </DropdownMenuItem>
+                          {canManage && !isSelf ? (
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => handleRemove(member.userId)}
+                            >
+                              <UserMinus className="size-4" aria-hidden="true" />
+                              Remove from workspace
+                            </DropdownMenuItem>
+                          ) : isSelf ? (
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => handleRemove(member.userId)}
+                            >
+                              <UserMinus className="size-4" aria-hidden="true" />
+                              Leave workspace
+                            </DropdownMenuItem>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}
