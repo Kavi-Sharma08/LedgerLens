@@ -1,38 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 import { listWorkspaces } from "@/lib/api/workspaces";
 
 /**
- * Resolves and persists the active workspace after login or page load.
+ * Ensures the ll-active-workspace cookie matches the workspace the server
+ * layout resolved (serverWorkspaceId).
  *
- * Runs once on mount inside the dashboard layout. If a valid cookie exists
- * the provider is a no-op. If not, it picks the first available workspace
- * and writes the cookie via the activate API route.
- *
- * If the user has zero workspaces, redirects to the onboarding page.
+ * Runs once on mount inside the dashboard layout:
+ *   - Cookie already equals the server-resolved workspace -> no-op.
+ *   - Cookie missing or stale -> activate the correct workspace through
+ *     /api/workspace/activate and reload so server components re-render with
+ *     the corrected cookie (which also fixes a stale cookie left behind when
+ *     a membership was removed).
+ *   - No workspaces at all -> redirect to onboarding.
  *
  * This component renders nothing — it only performs side effects.
  */
-export function WorkspaceProvider({ children }) {
-  const router = useRouter();
-  const [ready, setReady] = useState(false);
+export function WorkspaceProvider({ serverWorkspaceId, children }) {
+  const attemptedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function resolveWorkspace() {
-      // Already have a cookie — nothing to do.
-      if (getCookie("ll-active-workspace")) {
-        setReady(true);
-        return;
-      }
+      const cookie = getCookie("ll-active-workspace");
+
+      // Cookie already matches the workspace the server rendered with.
+      if (cookie === serverWorkspaceId) return;
+
+      // Don't spin if activation keeps failing (e.g. API is down).
+      if (attemptedRef.current) return;
+      attemptedRef.current = true;
 
       try {
         const workspaces = await listWorkspaces();
-
         if (cancelled) return;
 
         if (!workspaces || workspaces.length === 0) {
@@ -41,23 +44,26 @@ export function WorkspaceProvider({ children }) {
           return;
         }
 
-        // Activate the first workspace via the server route (sets cookie).
+        // Prefer the server-resolved workspace; otherwise the first available.
+        const target =
+          workspaces.find((ws) => ws.id === serverWorkspaceId) ?? workspaces[0];
+
+        if (cookie === target.id) return;
+
         const res = await fetch("/api/workspace/activate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workspaceId: workspaces[0].id }),
+          body: JSON.stringify({ workspaceId: target.id }),
         });
 
         if (cancelled) return;
 
-        if (res.ok) {
+        if (res.ok && cookie !== target.id) {
           // Reload so server components re-render with the new cookie.
           window.location.reload();
-        } else {
-          setReady(true);
         }
       } catch {
-        if (!cancelled) setReady(true);
+        // Leave the cookie as-is; transient API failures shouldn't redirect.
       }
     }
 
@@ -65,11 +71,9 @@ export function WorkspaceProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [serverWorkspaceId]);
 
   // Render children immediately — the provider is non-blocking.
-  // The first paint may use a null workspace, but API calls will resolve
-  // once the cookie is established and the page reloads.
   return children;
 }
 

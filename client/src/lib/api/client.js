@@ -120,24 +120,30 @@ export const api = {
  * Trusted identity headers for server-to-server calls into FastAPI.
  * Mirrors src/app/api/backend/[...path]/route.js — keep both in sync.
  */
-export function trustedBackendHeaders(session) {
+export function trustedBackendHeaders(session, { workspaceId } = {}) {
   const secret = process.env.INTERNAL_API_SECRET;
   if (!secret || !session?.user?.id) return null;
 
-  return {
+  const headers = {
     Accept: "application/json",
     "X-LL-User-Id": String(session.user.id),
     "X-LL-User-Email": encodeURIComponent(String(session.user.email ?? "")),
     "X-LL-Internal-Secret": secret,
   };
+  if (workspaceId && /^[a-fA-F0-9]{24}$/.test(workspaceId)) {
+    headers["X-LL-Workspace-Id"] = workspaceId;
+  }
+  return headers;
 }
 
 /**
  * Server-side helper for React Server Components. Requires an already
  * validated Auth.js session; returns parsed JSON or throws ApiError.
+ * Pass the active workspace id (from the ll-active-workspace cookie) as
+ * `workspaceId` so workspace-scoped calls resolve the right tenant.
  */
-async function serverRequest(path, { session, method = "GET", body }) {
-  const headers = trustedBackendHeaders(session);
+async function serverRequest(path, { session, method = "GET", body, workspaceId }) {
+  const headers = trustedBackendHeaders(session, { workspaceId });
   if (!headers) {
     throw new ApiError("Authentication required.", { status: 401, code: "unauthorized" });
   }

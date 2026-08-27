@@ -70,7 +70,7 @@ export function OverviewView({ greeting }) {
           </h1>
         </header>
         <ErrorState
-          title="Unable to load your workspace"
+          title="Unable to load overview"
           message={error}
         />
       </div>
@@ -101,10 +101,10 @@ export function OverviewView({ greeting }) {
       {!hasData ? (
         <EmptyState
           icon={ArrowLeftRight}
-          title="No financial activity yet"
-          description="Connect your first financial source to begin reconciling your records automatically."
+          title="Welcome to LedgerLens"
+          description="Add your first financial source to start reconciling transactions automatically."
           action={
-            <Button render={<Link href="/dashboard/sources" />}>Connect a financial source</Button>
+            <Button render={<Link href="/dashboard/sources" />}>Add a source</Button>
           }
         />
       ) : (

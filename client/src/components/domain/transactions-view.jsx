@@ -72,6 +72,7 @@ export function TransactionsView() {
     ({ signal, cursor }) => {
       return listTransactions({ ...activeFilters, limit: 25, cursor, signal })
         .then((result) => {
+          console.log(result)
           if (signal?.aborted) return;
           setPage(result);
           setError(null);

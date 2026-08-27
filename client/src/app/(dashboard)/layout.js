@@ -17,10 +17,10 @@ import { auth } from "@/lib/auth";
  * The active workspace is determined by the ll-active-workspace cookie, which
  * the backend verifies membership for.
  *
- * If the user has zero workspaces, we redirect to /onboarding (which lives
- * outside this route group, avoiding an infinite loop). The WorkspaceProvider
- * client component handles cookie establishment when a cookie is missing
- * but workspaces exist.
+ * If the cookie workspace is invalid (deleted, user removed), we fall back
+ * to the user's first available workspace and pass it to WorkspaceProvider,
+ * which rewrites the cookie so subsequent API calls use the corrected workspace.
+ * If the user has zero workspaces, we redirect to /onboarding.
  */
 export default async function DashboardLayout({ children }) {
   const session = await auth();
@@ -41,6 +41,7 @@ export default async function DashboardLayout({ children }) {
 
   let workspace = null;
   let allWorkspaces = [];
+  let workspacesLoaded = false;
 
   try {
     // Fetch all workspaces the user belongs to
@@ -51,33 +52,32 @@ export default async function DashboardLayout({ children }) {
       allWorkspaces = [];
     }
 
+    workspacesLoaded = true;
+
     if (activeWorkspaceId && allWorkspaces.length > 0) {
       // Use the cookie-specified workspace if it's in the user's list
       workspace = allWorkspaces.find((ws) => ws.id === activeWorkspaceId) || null;
     }
 
-    // Fall back to /current workspace if no valid cookie
+    // If the cookie workspace was invalid or missing, pick the first available
     if (!workspace && allWorkspaces.length > 0) {
-      try {
-        workspace = await serverApi.get("/api/workspaces/current", { session });
-      } catch {
-        // /current may 404 if no membership — not fatal, provider handles it.
-      }
+      workspace = allWorkspaces[0];
     }
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     // API unreachable: render without workspace data.
+    // WorkspaceProvider client component will handle resolution.
   }
 
-  // Redirect to onboarding if the user has zero workspaces.
-  // Onboarding lives outside this route group (/onboarding, not /dashboard/onboarding)
-  // so this redirect cannot create a loop.
-  if (allWorkspaces.length === 0) {
+  // Only redirect to onboarding if the API succeeded and returned zero workspaces.
+  // If the API failed, allWorkspaces stays [] but we should NOT redirect —
+  // the user may have workspaces and the API was just temporarily down.
+  if (allWorkspaces.length === 0 && workspacesLoaded) {
     redirect("/onboarding");
   }
 
   return (
-    <WorkspaceProvider>
+    <WorkspaceProvider serverWorkspaceId={workspace?.id ?? null}>
       <AppShell user={user} workspace={workspace} allWorkspaces={allWorkspaces}>
         {children}
       </AppShell>

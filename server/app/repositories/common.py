@@ -7,12 +7,27 @@ the sort key does not. Cursors are opaque to clients."""
 import base64
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from bson import ObjectId
 
 MAX_PAGE_SIZE = 200
 DEFAULT_PAGE_SIZE = 50
+
+
+def utc_isoformat(value) -> str | None:
+    """Serialize a datetime as an ISO string with an explicit UTC offset.
+
+    PyMongo decodes BSON dates as *naive* UTC datetimes, so `datetime.isoformat()`
+    emits no offset (e.g. "2026-08-27T08:13:11.397000"). Clients then can't tell
+    the value is UTC and may misread it as local time. This always emits the
+    "+00:00" suffix so the instant is unambiguous.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc).isoformat()
+    return value.isoformat()
 
 
 class InvalidCursorError(ValueError):

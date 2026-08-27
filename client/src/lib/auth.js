@@ -6,7 +6,7 @@ import Google from "next-auth/providers/google";
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
 
 import clientPromise, { getAuthDatabase } from "@/lib/mongo";
-import { ensureDefaultWorkspace, verifyUserCredentials } from "@/lib/registration";
+import { verifyUserCredentials } from "@/lib/registration";
 
 /**
  * Auth.js is the single authentication authority for LedgerLens.
@@ -81,14 +81,9 @@ export const authConfig = {
     },
   },
   events: {
-    // First-ever Google sign-in creates the adapter user row; give it a workspace.
-    async createUser({ user }) {
-      try {
-        await ensureDefaultWorkspace(user);
-      } catch (error) {
-        console.error("[auth] default workspace creation failed:", error);
-      }
-    },
+    // First-ever Google sign-in creates the adapter user row.
+    // We do NOT auto-create a workspace here — the onboarding flow
+    // handles workspace creation for new users.
   },
 };
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { ObjectId } from "mongodb";
 import { getAuthDatabase } from "@/lib/mongo";
+import { sendResetPasswordEmail } from "@/lib/mailer";
 
 /**
  * Password reset request. Always returns a generic success message to avoid
@@ -35,7 +35,7 @@ export async function POST(request) {
 
   try {
     const db = await getAuthDatabase();
-    const user = await db[USERS].findOne({ email: normalizedEmail });
+    const user = await db.collection(USERS).findOne({ email: normalizedEmail });
 
     if (user) {
       // Generate a random token
@@ -44,10 +44,10 @@ export async function POST(request) {
       const now = new Date();
 
       // Invalidate any existing tokens for this user
-      await db[TOKEN_COLLECTION].deleteMany({ userId: user._id });
+      await db.collection(TOKEN_COLLECTION).deleteMany({ userId: user._id });
 
       // Store the hashed token
-      await db[TOKEN_COLLECTION].insertOne({
+      await db.collection(TOKEN_COLLECTION).insertOne({
         userId: user._id,
         tokenHash,
         expiresAt: new Date(now.getTime() + TOKEN_EXPIRY_MS),
@@ -55,11 +55,10 @@ export async function POST(request) {
         createdAt: now,
       });
 
-      // TODO: Send email with reset link containing rawToken
-      // For now, log it for development
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`[forgot-password] Reset token for ${normalizedEmail}: ${rawToken}`);
-        console.log(`[forgot-password] Reset URL: ${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/reset-password/${rawToken}`);
+      try {
+        await sendResetPasswordEmail({ to: normalizedEmail, rawToken });
+      } catch (emailError) {
+        console.error("[forgot-password] failed to send email:", emailError);
       }
     }
   } catch (error) {

@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, Query
 
-from ...api.deps import get_current_membership, get_current_workspace, require_permission
+from ...api.deps import get_current_membership, get_current_user, get_current_workspace, require_permission
 from ...core.database import get_database
 from ...core.errors import AppError, NotFoundError
 from ...models.enums import ExceptionStatus, ReconciliationStatus, WorkspaceRole
+from ...models.user import User
 from ...models.workspace import Workspace
 from ...repositories import exception_repository, match_repository, reconciliation_run_repository
 from ...repositories.common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, InvalidCursorError
 from ...schemas.common import paginated
 from ...schemas.reconciliation import RunCreate
+from ...services.audit_helper import log_audit
 from ...services.mappers import to_exception_public, to_match_public, to_run_public
 from ...services.reconciliation_service import start_run
 
@@ -19,6 +21,7 @@ router = APIRouter()
 async def create_reconciliation_run(
     payload: RunCreate,
     workspace: Workspace = Depends(get_current_workspace),
+    current_user: User = Depends(get_current_user),
     db=Depends(get_database),
 ):
     """Run a deterministic reconciliation across the given sources.
@@ -35,6 +38,17 @@ async def create_reconciliation_run(
             raise AppError(status_code=422, message="One of the source ids isn't valid.") from exc
 
     run = await start_run(db, workspace.id, source_ids=source_ids)
+
+    await log_audit(
+        db,
+        workspace_id=workspace.id,
+        user_id=current_user.id,
+        action="reconciliation_started",
+        entity_type="reconciliation_run",
+        entity_id=str(run.id),
+        details={"sourceCount": len(source_ids), "sourceIds": [str(s) for s in source_ids]},
+    )
+
     return to_run_public(run)
 
 
@@ -183,6 +197,17 @@ async def approve_match(
     updated = await match_repository.approve_match(
         db, workspace.id, _match_id, membership.user_id, note
     )
+
+    await log_audit(
+        db,
+        workspace_id=workspace.id,
+        user_id=membership.user_id,
+        action="match_approved",
+        entity_type="match",
+        entity_id=match_id,
+        details={"reconciliationRunId": run_id, "note": note or ""},
+    )
+
     return to_match_public(updated)
 
 
@@ -211,4 +236,15 @@ async def reject_match(
     updated = await match_repository.reject_match(
         db, workspace.id, _match_id, membership.user_id, note
     )
+
+    await log_audit(
+        db,
+        workspace_id=workspace.id,
+        user_id=membership.user_id,
+        action="match_rejected",
+        entity_type="match",
+        entity_id=match_id,
+        details={"reconciliationRunId": run_id, "note": note or ""},
+    )
+
     return to_match_public(updated)

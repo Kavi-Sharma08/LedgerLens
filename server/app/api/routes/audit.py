@@ -6,7 +6,7 @@ from ...core.database import get_database
 from ...core.errors import AppError
 from ...models.workspace import Workspace
 from ...repositories import audit_repository
-from ...repositories.common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, InvalidCursorError
+from ...repositories.common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, InvalidCursorError, utc_isoformat
 from ...schemas.common import paginated
 
 router = APIRouter()
@@ -39,7 +39,7 @@ async def list_audit_logs(
             "entityType": entry.entity_type,
             "entityId": entry.entity_id,
             "details": entry.details or {},
-            "createdAt": entry.created_at.isoformat() if entry.created_at else None,
+            "createdAt": utc_isoformat(entry.created_at),
         }
         for entry in page.items
     ]

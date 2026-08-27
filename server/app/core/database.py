@@ -59,6 +59,15 @@ INDEXES = [
     # --- audit logs (Phase 9) ---
     ("audit_logs", [("workspaceId", 1), ("createdAt", -1)], False),
     ("audit_logs", [("workspaceId", 1), ("action", 1), ("createdAt", -1)], False),
+    # --- invitations ---
+    (
+        "invitations",
+        [("workspaceId", 1), ("email", 1), ("status", 1)],
+        True,
+        {"status": "PENDING"},
+    ),
+    ("invitations", [("tokenHash", 1)], False),
+    ("invitations", [("expiresAt", 1)], False),
 ]
 
 

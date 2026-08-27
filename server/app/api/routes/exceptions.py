@@ -13,6 +13,7 @@ from ...models.workspace import Workspace
 from ...repositories import exception_repository
 from ...repositories.common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, InvalidCursorError
 from ...schemas.common import paginated
+from ...services.audit_helper import log_audit
 from ...services.mappers import to_exception_public
 
 router = APIRouter()
@@ -67,6 +68,17 @@ async def assign_exception(
     result = await exception_repository.assign_exception(db, workspace.id, _id, assignee_id)
     if result is None:
         raise NotFoundError(message="Exception not found.")
+
+    await log_audit(
+        db,
+        workspace_id=workspace.id,
+        user_id=membership.user_id,
+        action="exception_assigned",
+        entity_type="exception",
+        entity_id=exception_id,
+        details={"assignedTo": assigned_to},
+    )
+
     return to_exception_public(result)
 
 
@@ -95,11 +107,29 @@ async def update_exception_status(
             message=f"Invalid status: {new_status_str}. Use OPEN, INVESTIGATING, RESOLVED, or DISMISSED.",
         )
 
+    result = await exception_repository.get_by_id(db, workspace.id, _id)
+    if result is None:
+        raise NotFoundError(message="Exception not found.")
+
+    old_status = result.status.value if hasattr(result.status, 'value') else str(result.status)
+
     result = await exception_repository.update_status(
         db, workspace.id, _id, new_status, membership.user_id
     )
-    if result is None:
-        raise NotFoundError(message="Exception not found.")
+
+    await log_audit(
+        db,
+        workspace_id=workspace.id,
+        user_id=membership.user_id,
+        action="exception_status_changed",
+        entity_type="exception",
+        entity_id=exception_id,
+        details={
+            "oldStatus": old_status,
+            "newStatus": new_status.value,
+        },
+    )
+
     return to_exception_public(result)
 
 
@@ -128,4 +158,15 @@ async def add_exception_note(
     )
     if result is None:
         raise NotFoundError(message="Exception not found.")
+
+    await log_audit(
+        db,
+        workspace_id=workspace.id,
+        user_id=membership.user_id,
+        action="exception_note_added",
+        entity_type="exception",
+        entity_id=exception_id,
+        details={"notePreview": text[:200]},
+    )
+
     return to_exception_public(result)

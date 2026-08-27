@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { LoaderCircle } from "lucide-react";
 
@@ -15,10 +15,10 @@ import { FormDivider } from "@/components/auth/form-divider";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function validate(values) {
+function validate(values, { isInvitation }) {
   const errors = {};
   if (!values.name.trim()) errors.name = "Enter your full name.";
-  if (!values.workspaceName.trim())
+  if (!isInvitation && !values.workspaceName.trim())
     errors.workspaceName = "Give your workspace a name — usually your company.";
   if (!values.email.trim()) errors.email = "Enter your work email address.";
   else if (!EMAIL_PATTERN.test(values.email.trim()))
@@ -78,6 +78,9 @@ async function registerAccount(payload) {
 
 function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const invitationToken = searchParams.get("invitation");
+  const isInvitation = Boolean(invitationToken);
   const [values, setValues] = useState({
     name: "",
     workspaceName: "",
@@ -85,10 +88,26 @@ function SignupForm() {
     password: "",
     confirmPassword: "",
   });
+  const [invitationContext, setInvitationContext] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [existingEmail, setExistingEmail] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Prefill the invited email and show the workspace they're joining.
+  useEffect(() => {
+    if (!invitationToken || values.email) return;
+    let cancelled = false;
+    fetch(`/api/invitations/lookup?token=${encodeURIComponent(invitationToken)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setInvitationContext(data);
+        if (data.invitedEmail) setValues((prev) => ({ ...prev, email: data.invitedEmail }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [invitationToken, values.email]);
 
   function setField(name, value) {
     setValues((prev) => ({ ...prev, [name]: value }));
@@ -98,7 +117,7 @@ function SignupForm() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const errors = validate(values);
+    const errors = validate(values, { isInvitation });
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
@@ -106,13 +125,19 @@ function SignupForm() {
     setFormError(null);
     setExistingEmail(false);
 
+    const payload = {
+      name: values.name.trim(),
+      email: values.email.trim(),
+      password: values.password,
+    };
+    if (isInvitation) {
+      payload.invitationToken = invitationToken;
+    } else {
+      payload.workspaceName = values.workspaceName.trim();
+    }
+
     try {
-      await registerAccount({
-        name: values.name.trim(),
-        workspaceName: values.workspaceName.trim(),
-        email: values.email.trim(),
-        password: values.password,
-      });
+      await registerAccount(payload);
     } catch (error) {
       setExistingEmail(Boolean(error.existingEmail));
       setFormError(error.message);
@@ -130,19 +155,23 @@ function SignupForm() {
     if (result?.error) {
       // Registration succeeded but sign-in failed (e.g. transient DB issue).
       setFormError(
-        "Your workspace is ready — we just couldn't sign you in automatically. Please sign in."
+        "Your account is ready — we just couldn't sign you in automatically. Please sign in."
       );
       setSubmitting(false);
       return;
     }
 
-    router.replace("/dashboard");
+    if (isInvitation) {
+      router.replace(`/accept-invitation/${invitationToken}`);
+    } else {
+      router.replace("/dashboard");
+    }
     router.refresh();
   }
 
   return (
     <div className="space-y-6">
-      <GoogleButton />
+      <GoogleButton redirectTo={isInvitation ? `/accept-invitation/${invitationToken}` : "/dashboard"} />
       <FormDivider label="or sign up with email" />
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
@@ -161,19 +190,33 @@ function SignupForm() {
           <FieldError id="name-error" message={fieldErrors.name} />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="workspaceName">Workspace name</Label>
-          <Input
-            id="workspaceName"
-            name="workspaceName"
-            placeholder="Acme Inc."
-            value={values.workspaceName}
-            onChange={(e) => setField("workspaceName", e.target.value)}
-            aria-invalid={Boolean(fieldErrors.workspaceName)}
-            aria-describedby={fieldErrors.workspaceName ? "workspace-error" : undefined}
-          />
-          <FieldError id="workspace-error" message={fieldErrors.workspaceName} />
-        </div>
+        {isInvitation ? (
+          <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-3">
+            <p className="text-sm text-foreground">
+              {invitationContext?.workspaceName
+                ? `You'll be added to ${invitationContext.workspaceName} — no workspace to create.`
+                : "This invitation will add you to a workspace after signup."}
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Set a password below to create your account, then you&apos;ll be signed in
+              and added to the workspace automatically.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor="workspaceName">Workspace name</Label>
+            <Input
+              id="workspaceName"
+              name="workspaceName"
+              placeholder="Acme Inc."
+              value={values.workspaceName}
+              onChange={(e) => setField("workspaceName", e.target.value)}
+              aria-invalid={Boolean(fieldErrors.workspaceName)}
+              aria-describedby={fieldErrors.workspaceName ? "workspace-error" : undefined}
+            />
+            <FieldError id="workspace-error" message={fieldErrors.workspaceName} />
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="signup-email">Work email</Label>
@@ -184,10 +227,16 @@ function SignupForm() {
             autoComplete="email"
             placeholder="you@company.com"
             value={values.email}
+            readOnly={isInvitation}
             onChange={(e) => setField("email", e.target.value)}
             aria-invalid={Boolean(fieldErrors.email)}
             aria-describedby={fieldErrors.email ? "signup-email-error" : undefined}
           />
+          {isInvitation ? (
+            <p id="signup-email-hint" className="text-xs text-muted-foreground">
+              The invite was sent to this address, so it&apos;s used for your account.
+            </p>
+          ) : null}
           <FieldError id="signup-email-error" message={fieldErrors.email} />
         </div>
 
@@ -237,7 +286,10 @@ function SignupForm() {
             {existingEmail && (
               <>
                 {" "}
-                <Link href="/login" className="font-medium underline underline-offset-4">
+                <Link
+                  href={isInvitation ? `/login?invitation=${invitationToken}` : "/login"}
+                  className="font-medium underline underline-offset-4"
+                >
                   Sign in
                 </Link>
               </>
@@ -247,11 +299,21 @@ function SignupForm() {
 
         <Button type="submit" className="w-full" disabled={submitting}>
           {submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
-          {submitting ? "Creating workspace…" : "Create workspace"}
+          {submitting
+            ? isInvitation
+              ? "Creating account…"
+              : "Creating workspace…"
+            : isInvitation
+              ? "Create account"
+              : "Create workspace"}
         </Button>
 
         <p className="text-center text-xs leading-relaxed text-muted-foreground">
-          By creating a workspace you agree to our{" "}
+          {isInvitation ? (
+            "By creating an account you agree to our "
+          ) : (
+            "By creating a workspace you agree to our "
+          )}
           <Link href="/#" className="underline underline-offset-4 hover:text-foreground">
             Terms of Service
           </Link>{" "}

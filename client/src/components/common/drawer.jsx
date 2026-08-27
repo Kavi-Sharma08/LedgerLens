@@ -88,13 +88,16 @@ export function DetailField({ label, children, className }) {
 /**
  * Section separator used inside drawer bodies.
  */
-export function DrawerSection({ title, children, className }) {
+export function DrawerSection({ title, action, children, className }) {
   return (
     <section className={cn("border-t border-border px-5 py-4", className)}>
       {title && (
-        <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {title}
-        </h3>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {title}
+          </h3>
+          {action && <div>{action}</div>}
+        </div>
       )}
       {children}
     </section>

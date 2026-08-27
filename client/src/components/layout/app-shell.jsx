@@ -110,7 +110,8 @@ export function AppShell({ user, workspace, allWorkspaces, children }) {
           <TopbarActions user={user} workspace={workspace} allWorkspaces={allWorkspaces} />
         </header>
 
-        <main className="flex-1">{children}</main>
+        {/* keyed by workspace so data views remount when the active workspace changes */}
+        <main key={workspace?.id ?? "no-workspace"} className="flex-1">{children}</main>
       </div>
     </div>
   );

@@ -45,7 +45,7 @@ export async function POST(request) {
     const now = new Date();
 
     // Find a valid, unused, non-expired token
-    const resetToken = await db[TOKEN_COLLECTION].findOne({
+    const resetToken = await db.collection(TOKEN_COLLECTION).findOne({
       tokenHash,
       usedAt: null,
       expiresAt: { $gt: now },
@@ -62,19 +62,19 @@ export async function POST(request) {
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     // Update the user's password
-    await db[USERS].updateOne(
+    await db.collection(USERS).updateOne(
       { _id: resetToken.userId },
       { $set: { passwordHash, updatedAt: now } }
     );
 
     // Mark the token as used
-    await db[TOKEN_COLLECTION].updateOne(
+    await db.collection(TOKEN_COLLECTION).updateOne(
       { _id: resetToken._id },
       { $set: { usedAt: now } }
     );
 
     // Invalidate any other tokens for this user
-    await db[TOKEN_COLLECTION].updateMany(
+    await db.collection(TOKEN_COLLECTION).updateMany(
       { userId: resetToken.userId, _id: { $ne: resetToken._id } },
       { $set: { usedAt: now } }
     );

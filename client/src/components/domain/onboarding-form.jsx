@@ -44,16 +44,14 @@ export function OnboardingForm() {
         throw new Error(data?.detail || "Couldn't create workspace. Try again.");
       }
 
-      // Activate the new workspace
-      const activateRes = await fetch("/api/workspace/activate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId: data.id }),
-      });
-
-      if (!activateRes.ok) {
-        router.replace("/dashboard");
-        return;
+      // The create route now also sets the cookie, but activate explicitly
+      // to be safe in case of race conditions.
+      if (data?.id) {
+        await fetch("/api/workspace/activate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: data.id }),
+        }).catch(() => {});
       }
 
       window.location.replace("/dashboard");

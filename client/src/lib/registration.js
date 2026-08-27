@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { ObjectId } from "mongodb";
 
 import { getAuthDatabase } from "@/lib/mongo";
+import { findPendingInvitation } from "@/lib/invitations";
 
 /**
  * Account + workspace data access for the authentication layer.
@@ -41,7 +42,7 @@ async function uniqueSlug(db, desired) {
   const base = slugify(desired);
   let candidate = base;
   let suffix = 1;
-  while (await db[WORKSPACES].findOne({ slug: candidate }, { projection: { _id: 1 } })) {
+  while (await db.collection(WORKSPACES).findOne({ slug: candidate }, { projection: { _id: 1 } })) {
     suffix += 1;
     candidate = `${base}-${suffix}`;
   }
@@ -51,7 +52,7 @@ async function uniqueSlug(db, desired) {
 /** Returns the raw user document or null. Never exposes passwordHash. */
 export async function findUserByEmail(email) {
   const db = await getAuthDatabase();
-  return db[USERS].findOne({ email: email.trim().toLowerCase() });
+  return db.collection(USERS).findOne({ email: email.trim().toLowerCase() });
 }
 
 /**
@@ -74,10 +75,13 @@ export async function verifyUserCredentials(email, password) {
 }
 
 /**
- * Creates the first user and their owned workspace in one flow.
- * The unique index on users.email remains the concurrency source of truth.
+ * Creates the user and, for signups without an invitation, their owned
+ * workspace. When an invitationToken is present the user is created WITHOUT
+ * a workspace — the invitation's accept flow adds them to the invited
+ * workspace right after they sign in. The unique index on users.email
+ * remains the concurrency source of truth.
  */
-export async function registerAccount({ name, email, password, workspaceName }) {
+export async function registerAccount({ name, email, password, workspaceName, invitationToken }) {
   const db = await getAuthDatabase();
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -85,12 +89,26 @@ export async function registerAccount({ name, email, password, workspaceName }) 
     throw new RegistrationError("email_already_registered", "Email already registered.");
   }
 
+  if (invitationToken) {
+    const now = new Date();
+    const invitation = await findPendingInvitation(db, invitationToken);
+    if (!invitation) {
+      throw new RegistrationError("invalid_invitation", "This invitation is no longer valid.");
+    }
+    if (
+      invitation.email.toLowerCase().trim() !== normalizedEmail ||
+      (invitation.expiresAt && new Date(invitation.expiresAt).getTime() < now.getTime())
+    ) {
+      throw new RegistrationError("invalid_invitation", "This invitation isn't valid for that email.");
+    }
+  }
+
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const now = new Date();
 
   let result;
   try {
-    result = await db[USERS].insertOne({
+    result = await db.collection(USERS).insertOne({
       name: name.trim(),
       email: normalizedEmail,
       emailVerified: null,
@@ -108,26 +126,28 @@ export async function registerAccount({ name, email, password, workspaceName }) 
     throw error;
   }
 
-  const workspaceId = new ObjectId();
-  await db[WORKSPACES].insertOne({
-    _id: workspaceId,
-    name: workspaceName.trim(),
-    slug: await uniqueSlug(db, workspaceName),
-    ownerId: result.insertedId,
-    createdAt: now,
-    updatedAt: now,
-  });
+  if (!invitationToken) {
+    const workspaceId = new ObjectId();
+    await db.collection(WORKSPACES).insertOne({
+      _id: workspaceId,
+      name: workspaceName.trim(),
+      slug: await uniqueSlug(db, workspaceName),
+      ownerId: result.insertedId,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-  // Create OWNER membership record
-  await db[WORKSPACE_MEMBERS].insertOne({
-    workspaceId: workspaceId,
-    userId: result.insertedId,
-    role: "OWNER",
-    status: "ACTIVE",
-    joinedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  });
+    // Create OWNER membership record
+    await db.collection(WORKSPACE_MEMBERS).insertOne({
+      workspaceId: workspaceId,
+      userId: result.insertedId,
+      role: "OWNER",
+      status: "ACTIVE",
+      joinedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 
   return { userId: result.insertedId.toString(), email: normalizedEmail };
 }
@@ -148,14 +168,14 @@ export async function ensureDefaultWorkspace(user) {
   }
 
   // Check if user already has any workspace membership
-  const existingMembership = await db[WORKSPACE_MEMBERS].findOne({ userId: _id });
+  const existingMembership = await db.collection(WORKSPACE_MEMBERS).findOne({ userId: _id });
   if (existingMembership) return;
 
   const workspaceId = new ObjectId();
   const displayName = user.name || user.email?.split("@")[0] || "Workspace";
   const now = new Date();
 
-  await db[WORKSPACES].insertOne({
+  await db.collection(WORKSPACES).insertOne({
     _id: workspaceId,
     name: `${displayName}'s Workspace`,
     slug: await uniqueSlug(db, displayName),
@@ -165,7 +185,7 @@ export async function ensureDefaultWorkspace(user) {
   });
 
   // Create OWNER membership record
-  await db[WORKSPACE_MEMBERS].insertOne({
+  await db.collection(WORKSPACE_MEMBERS).insertOne({
     workspaceId: workspaceId,
     userId: _id,
     role: "OWNER",
@@ -185,7 +205,7 @@ export async function setPassword(userId, newPassword) {
   const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   const _id = typeof userId === "string" ? ObjectId.createFromHexString(userId) : userId;
 
-  await db[USERS].updateOne(
+  await db.collection(USERS).updateOne(
     { _id },
     { $set: { passwordHash, updatedAt: new Date() } }
   );

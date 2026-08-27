@@ -1,10 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext } from "react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+
+/**
+ * React context that tracks whether a DropdownMenuGroup is mounted.
+ * DropdownMenuLabel uses this to fall back to a plain element if
+ * the Base UI MenuGroup context isn't available (e.g. portal timing).
+ */
+const MenuGroupCtx = createContext(false);
 
 const DropdownMenu = MenuPrimitive.Root;
 const DropdownMenuTrigger = MenuPrimitive.Trigger;
@@ -49,7 +56,24 @@ function DropdownMenuItem({ className, variant = "default", ...props }) {
   );
 }
 
+/**
+ * Group label with a defensive fallback. If the Base UI MenuGroup context
+ * is missing (portal timing, mismatched versions), render a plain div
+ * instead of throwing.
+ */
 function DropdownMenuLabel({ className, ...props }) {
+  const inGroup = useContext(MenuGroupCtx);
+
+  if (!inGroup) {
+    return (
+      <div
+        data-slot="dropdown-menu-label"
+        className={cn("px-2 py-1.5 text-xs font-medium text-muted-foreground", className)}
+        {...props}
+      />
+    );
+  }
+
   return (
     <MenuPrimitive.GroupLabel
       data-slot="dropdown-menu-label"
@@ -59,8 +83,14 @@ function DropdownMenuLabel({ className, ...props }) {
   );
 }
 
-function DropdownMenuGroup(props) {
-  return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />;
+function DropdownMenuGroup({ children, ...props }) {
+  return (
+    <MenuGroupCtx.Provider value={true}>
+      <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props}>
+        {children}
+      </MenuPrimitive.Group>
+    </MenuGroupCtx.Provider>
+  );
 }
 
 function DropdownMenuSeparator({ className, ...props }) {

@@ -19,11 +19,23 @@ export function formatMoney(amount, currency = "INR") {
   }
 }
 
+function parseInstant(value) {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const text = String(value).trim();
+  if (!text) return null;
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(text);
+  // Naive datetimes are treated as UTC, not local. The backend stores UTC,
+  // so interpreting a tz-less value as local time would shift every
+  // timestamp by the browser's offset.
+  const hasTz = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(text);
+  const date = new Date(isDateOnly ? `${text}T00:00:00Z` : hasTz ? text : `${text}Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function formatDate(value) {
-  if (!value) return "—";
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
-  const date = new Date(dateOnly ? `${value}T00:00:00Z` : value);
-  if (Number.isNaN(date.getTime())) return value;
+  const date = parseInstant(value);
+  if (!date) return value == null || value === "" ? "—" : String(value);
   return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
     month: "short",
@@ -32,22 +44,21 @@ export function formatDate(value) {
   }).format(date);
 }
 
-export function formatDateTime(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+export function formatDateTime(value, options = {}) {
+  const date = parseInstant(value);
+  if (!date) return value == null || value === "" ? "—" : String(value);
   return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
     month: "short",
+    year: options.year ? "numeric" : undefined,
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
 }
 
 export function formatRelativeTime(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+  const date = parseInstant(value);
+  if (!date) return "";
   const seconds = Math.round((Date.now() - date.getTime()) / 1000);
   if (seconds < 60) return "just now";
   const minutes = Math.round(seconds / 60);

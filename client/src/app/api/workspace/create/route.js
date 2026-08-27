@@ -57,5 +57,17 @@ export async function POST(request) {
 
   const data = await upstream.json().catch(() => null);
 
+  // If creation succeeded, also set the active workspace cookie
+  if (upstream.ok && data?.id) {
+    const response = NextResponse.json(data, { status: upstream.status });
+    response.cookies.set("ll-active-workspace", data.id, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+      httpOnly: false,
+    });
+    return response;
+  }
+
   return NextResponse.json(data, { status: upstream.status });
 }

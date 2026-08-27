@@ -48,6 +48,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next") || "/dashboard";
+  const invitationToken = searchParams.get("invitation");
 
   const [values, setValues] = useState({ email: "", password: "" });
   const [fieldErrors, setFieldErrors] = useState({});
@@ -86,13 +87,19 @@ function LoginForm() {
       return;
     }
 
-    router.replace(nextPath.startsWith("/") ? nextPath : "/dashboard");
+    if (invitationToken) {
+      router.replace(`/accept-invitation/${invitationToken}`);
+    } else {
+      router.replace(nextPath.startsWith("/") ? nextPath : "/dashboard");
+    }
     router.refresh();
   }
 
   return (
     <div className="space-y-6">
-      <GoogleButton redirectTo={nextPath} />
+      <GoogleButton
+        redirectTo={invitationToken ? `/accept-invitation/${invitationToken}` : nextPath}
+      />
       <FormDivider label="or continue with email" />
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">

@@ -1,9 +1,12 @@
+import { cookies } from "next/headers";
+
 import { auth } from "@/lib/auth";
 import { serverApi } from "@/lib/api/client";
 import { PageHeader } from "@/components/common/page-header";
 import { DetailField, DrawerSection } from "@/components/common/drawer";
 import { SettingsForm } from "@/components/domain/settings-form";
 import { WorkspaceMembersSection } from "@/components/domain/workspace-members-section";
+import { WorkspaceNameEditor } from "@/components/domain/workspace-name-editor";
 import { PasswordSection } from "@/components/domain/password-section";
 
 export const metadata = { title: "Settings" };
@@ -14,12 +17,25 @@ export const metadata = { title: "Settings" };
  */
 export default async function SettingsPage() {
   const session = await auth();
+  const cookieStore = await cookies();
+  const workspaceId = cookieStore.get("ll-active-workspace")?.value;
 
   let workspace = null;
+  let currentUserRole = null;
   try {
-    workspace = await serverApi.get("/api/workspaces/current", { session });
+    workspace = await serverApi.get("/api/workspaces/current", { session, workspaceId });
   } catch {
     // Workspace API unreachable: show account info without it.
+  }
+
+  if (workspace?.id && session?.user?.id) {
+    try {
+      const members = await serverApi.get(`/api/workspaces/${workspace.id}/members`, { session, workspaceId });
+      const current = members.find((m) => m.userId === session.user.id);
+      if (current) currentUserRole = current.role;
+    } catch {
+      // Could not fetch role — member section will work without invite button
+    }
   }
 
   return (
@@ -46,22 +62,27 @@ export default async function SettingsPage() {
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <DrawerSection title="Workspace" className="border-t-0">
           <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
-            <DetailField label="Name">{workspace?.name || "—"}</DetailField>
+            <DetailField label="Name">
+              {workspace?.id ? (
+                <WorkspaceNameEditor workspaceId={workspace.id} initialName={workspace.name} />
+              ) : (
+                "—"
+              )}
+            </DetailField>
             <DetailField label="Slug">
               {workspace?.slug ? <span className="font-mono text-xs">{workspace.slug}</span> : "—"}
             </DetailField>
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Workspace ID</dt>
-              <dd className="mt-0.5 font-mono text-xs break-all text-muted-foreground">
-                {workspace?.id || "—"}
-              </dd>
-            </div>
           </dl>
         </DrawerSection>
       </div>
 
       {/* Members */}
-      {workspace?.id && <WorkspaceMembersSection workspaceId={workspace.id} />}
+      {workspace?.id && (
+        <WorkspaceMembersSection
+          workspaceId={workspace.id}
+          currentUserRole={currentUserRole}
+        />
+      )}
 
       <SettingsForm />
     </div>
