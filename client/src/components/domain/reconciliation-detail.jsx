@@ -19,8 +19,11 @@ import { EvidenceList } from "@/components/domain/evidence-list";
 import { MatchDrawer } from "@/components/domain/match-drawer";
 import { ExceptionDetailDrawer } from "@/components/domain/exception-detail-drawer";
 import { TransactionDrawer } from "@/components/domain/transaction-drawer";
+import { AiAnalysis } from "@/components/domain/ai-analysis";
 import { useDashboard } from "@/components/common/dashboard-context";
+import { useAiContext } from "@/components/common/ai-context";
 import { getRun, listRunMatches, listRunExceptions, listRunUnmatched, approveMatch, rejectMatch } from "@/lib/api/reconciliations";
+import { analyzeReconciliation } from "@/lib/api/ai";
 import { formatCount, formatDateTime, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +35,7 @@ const TAB_VALUES = ["overview", "matched", "review", "unmatched", "exceptions"];
  * never re-derives matching outcomes.
  */
 export function ReconciliationDetail({ runId }) {
+  const { setReconciliationContext } = useAiContext();
   const [loaded, setLoaded] = useState({ id: null, run: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,6 +47,7 @@ export function ReconciliationDetail({ runId }) {
       .then((run) => {
         if (controller.signal.aborted) return;
         setLoaded({ id: runId, run });
+        setReconciliationContext(runId, run);
         setError(null);
       })
       .catch((err) => {
@@ -53,7 +58,8 @@ export function ReconciliationDetail({ runId }) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [runId]);
+  }, [runId, setReconciliationContext]);
+
 
   if (error) {
     return (
@@ -217,6 +223,13 @@ function OverviewPanel({ run, onJump }) {
           <span className="font-mono text-xs">{run.sourceIds.length} selected</span>
         </DetailField>
       </dl>
+
+      <div className="rounded-xl border border-border bg-card p-4">
+        <AiAnalysis
+          label="Ask AI for a summary"
+          analyze={({ signal }) => analyzeReconciliation(run.id, { signal })}
+        />
+      </div>
     </div>
   );
 }

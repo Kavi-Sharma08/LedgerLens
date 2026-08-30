@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     # actual authentication (OAuth, credentials, sessions).
     internal_api_secret: str = ""
 
+    # AI provider (Phase 3). The key stays server-side and is never returned
+    # to clients. The model name is configurable through the environment.
+    ai_provider: str = "groq"
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-20b"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    ai_request_timeout_seconds: int = 60
+    ai_max_tool_rounds: int = 10
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_origins(cls, value):

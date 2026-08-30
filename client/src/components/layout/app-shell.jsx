@@ -8,6 +8,8 @@ import { LogoMark } from "@/components/common/logo";
 import { ApiStatusBadge } from "@/components/common/api-status-badge";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { TopbarActions } from "@/components/layout/topbar-actions";
+import { AskLedgerLens } from "@/components/domain/ask-ledgerlens";
+import { AiContextProvider } from "@/components/common/ai-context";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -53,66 +55,72 @@ export function AppShell({ user, workspace, allWorkspaces, primaryNav, secondary
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
-        {sidebarBody}
-      </aside>
-
-      {/* Mobile drawer */}
-      <div
-        className={cn(
-          "fixed inset-0 z-50 lg:hidden",
-          drawerOpen ? "pointer-events-auto" : "pointer-events-none"
-        )}
-        aria-hidden={!drawerOpen}
-      >
-        <div
-          className={cn(
-            "absolute inset-0 bg-navy/40 backdrop-blur-[2px] transition-opacity duration-200",
-            drawerOpen ? "opacity-100" : "opacity-0"
-          )}
-          onClick={() => setDrawerOpen(false)}
-        />
-        <aside
-          role="dialog"
-          aria-label="Navigation menu"
-          className={cn(
-            "absolute inset-y-0 left-0 flex w-64 flex-col border-r border-sidebar-border bg-sidebar shadow-xl transition-transform duration-200",
-            drawerOpen ? "translate-x-0" : "-translate-x-full"
-          )}
-        >
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(false)}
-            aria-label="Close navigation menu"
-            className="absolute right-2 top-3 flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
+    <AiContextProvider>
+      <div className="min-h-screen bg-background">
+        {/* Desktop sidebar */}
+        <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
           {sidebarBody}
         </aside>
-      </div>
 
-      {/* Main column */}
-      <div className="flex min-h-screen flex-col lg:pl-60">
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md sm:px-6">
-          <div className="flex items-center gap-2">
+        {/* Mobile drawer */}
+        <div
+          className={cn(
+            "fixed inset-0 z-50 lg:hidden",
+            drawerOpen ? "pointer-events-auto" : "pointer-events-none"
+          )}
+          aria-hidden={!drawerOpen}
+        >
+          <div
+            className={cn(
+              "absolute inset-0 bg-navy/40 backdrop-blur-[2px] transition-opacity duration-200",
+              drawerOpen ? "opacity-100" : "opacity-0"
+            )}
+            onClick={() => setDrawerOpen(false)}
+          />
+          <aside
+            role="dialog"
+            aria-label="Navigation menu"
+            className={cn(
+              "absolute inset-y-0 left-0 flex w-64 flex-col border-r border-sidebar-border bg-sidebar shadow-xl transition-transform duration-200",
+              drawerOpen ? "translate-x-0" : "-translate-x-full"
+            )}
+          >
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
-              aria-label="Open navigation menu"
-              className="-ml-1.5 flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 lg:hidden"
+              onClick={() => setDrawerOpen(false)}
+              aria-label="Close navigation menu"
+              className="absolute right-2 top-3 flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              <Menu className="size-5" aria-hidden="true" />
+              <X className="size-4" aria-hidden="true" />
             </button>
-          </div>
-          <TopbarActions user={user} workspace={workspace} allWorkspaces={allWorkspaces} />
-        </header>
+            {sidebarBody}
+          </aside>
+        </div>
 
-        {/* keyed by workspace so data views remount when the active workspace changes */}
-        <main key={workspace?.id ?? "no-workspace"} className="flex-1">{children}</main>
+        {/* Main column */}
+        <div className="flex min-h-screen flex-col lg:pl-60">
+          <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md sm:px-6">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                aria-label="Open navigation menu"
+                className="-ml-1.5 flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 lg:hidden"
+              >
+                <Menu className="size-5" aria-hidden="true" />
+              </button>
+            </div>
+            <TopbarActions user={user} workspace={workspace} allWorkspaces={allWorkspaces} />
+          </header>
+
+          {/* keyed by workspace so data views remount when the active workspace changes */}
+          <main key={workspace?.id ?? "no-workspace"} className="flex-1">{children}</main>
+        </div>
+
+        {/* Workspace-scoped AI Reconciliation Copilot */}
+        <AskLedgerLens />
       </div>
-    </div>
+    </AiContextProvider>
   );
 }
+

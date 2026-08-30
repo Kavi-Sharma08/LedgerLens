@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .routes import (
+    ai,
     audit,
     exceptions,
     files,
@@ -27,4 +28,5 @@ api_router.include_router(
 )
 api_router.include_router(exceptions.router, prefix="/exceptions", tags=["exceptions"])
 api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
+api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 api_router.include_router(overview.router, prefix="/overview", tags=["overview"])

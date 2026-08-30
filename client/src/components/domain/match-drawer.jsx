@@ -11,9 +11,12 @@ import { ConfidenceIndicator } from "@/components/domain/confidence-indicator";
 import { EvidenceList } from "@/components/domain/evidence-list";
 import { StatusBadge, humanize } from "@/components/domain/status-badge";
 import { TransactionDrawer } from "@/components/domain/transaction-drawer";
+import { AiAnalysis } from "@/components/domain/ai-analysis";
 import { useDashboard } from "@/components/common/dashboard-context";
+import { useAiContext } from "@/components/common/ai-context";
 import { getTransaction } from "@/lib/api/transactions";
 import { approveMatch, rejectMatch } from "@/lib/api/reconciliations";
+import { analyzeMatch } from "@/lib/api/ai";
 import { formatDate, formatMoney } from "@/lib/format";
 
 /**
@@ -37,11 +40,22 @@ export function MatchDrawer({ match, runId, onClose, onDecision }) {
 
 function MatchDetail({ match, runId, onDecision }) {
   const { can } = useDashboard();
+  const { setMatchContext, clearEntityContext } = useAiContext();
   const [acting, setActing] = useState(null);
   const [openTransactionId, setOpenTransactionId] = useState(null);
   // Local echo of the decision so the panel reflects it immediately while the
   // parent refreshes the list from the backend.
   const [decidedAction, setDecidedAction] = useState(null);
+
+  useEffect(() => {
+    if (match?.id) {
+      setMatchContext(match.id, runId);
+    }
+    return () => {
+      clearEntityContext();
+    };
+  }, [match?.id, runId, setMatchContext, clearEntityContext]);
+
 
   const canApprove = Boolean(can.approveMatches);
   const canReject = Boolean(can.rejectMatches);
@@ -114,6 +128,13 @@ function MatchDetail({ match, runId, onDecision }) {
             Differing fields: {match.mismatchedFields.map(humanize).join(", ")}
           </p>
         )}
+      </DrawerSection>
+
+      <DrawerSection title="AI explanation">
+        <AiAnalysis
+          label="Explain this match"
+          analyze={({ signal }) => analyzeMatch(match.id, { signal })}
+        />
       </DrawerSection>
 
       {(canApprove || canReject) && !isDecided && (

@@ -3,15 +3,18 @@
 import { useEffect, useState } from "react";
 
 import { Drawer, DetailField, DrawerSection } from "@/components/common/drawer";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ConfidenceIndicator } from "@/components/domain/confidence-indicator";
 import { EvidenceList } from "@/components/domain/evidence-list";
+import { AiAnalysis } from "@/components/domain/ai-analysis";
 import { StatusBadge, humanize } from "@/components/domain/status-badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useAiContext } from "@/components/common/ai-context";
 import { formatMoney, formatDate, formatDateTime } from "@/lib/format";
 import {
   getTransaction,
   listTransactionMatches,
 } from "@/lib/api/transactions";
+import { analyzeTransaction } from "@/lib/api/ai";
 import { getSource } from "@/lib/api/sources";
 import { getRun } from "@/lib/api/reconciliations";
 
@@ -25,10 +28,21 @@ import { getRun } from "@/lib/api/reconciliations";
  * results and explains an unmatched outcome in plain language.
  */
 export function TransactionDrawer({ transactionId, onClose, context }) {
+  const { setTransactionContext, clearEntityContext } = useAiContext();
   const [loaded, setLoaded] = useState(null); // { id, transaction, matches, source, run }
   const [error, setError] = useState(null);
 
   const runId = context?.runId;
+
+  useEffect(() => {
+    if (transactionId) {
+      setTransactionContext(transactionId, runId);
+    }
+    return () => {
+      clearEntityContext();
+    };
+  }, [transactionId, runId, setTransactionContext, clearEntityContext]);
+
 
   useEffect(() => {
     if (!transactionId) return;
@@ -197,6 +211,13 @@ export function TransactionDetail({ transactionId, loaded, error, context }) {
           </DrawerSection>
         </>
       )}
+
+      <DrawerSection title="AI explanation">
+        <AiAnalysis
+          label="Explain this transaction"
+          analyze={({ signal }) => analyzeTransaction(transaction.id, { signal })}
+        />
+      </DrawerSection>
     </article>
   );
 }

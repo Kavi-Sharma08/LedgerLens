@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Drawer, DetailField, DrawerSection } from "@/components/common/drawer";
 import { StatusBadge, exceptionReasonLabel } from "@/components/domain/status-badge";
 import { TransactionDrawer } from "@/components/domain/transaction-drawer";
+import { AiAnalysis } from "@/components/domain/ai-analysis";
+import { useAiContext } from "@/components/common/ai-context";
 import { updateExceptionStatus, addExceptionNote } from "@/lib/api/exceptions";
+import { analyzeException } from "@/lib/api/ai";
 import { formatDateTime } from "@/lib/format";
 
 const STATUS_ACTIONS = [
@@ -31,12 +34,23 @@ export function ExceptionDetailDrawer({
   onStatusChange,
   onNoteAdded,
 }) {
+  const { setExceptionContext, clearEntityContext } = useAiContext();
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(null);
   const [openTransactionId, setOpenTransactionId] = useState(null);
 
+  useEffect(() => {
+    if (exception?.id) {
+      setExceptionContext(exception.id, exception.reconciliationRunId);
+    }
+    return () => {
+      clearEntityContext();
+    };
+  }, [exception?.id, exception?.reconciliationRunId, setExceptionContext, clearEntityContext]);
+
   if (!exception) return null;
+
 
   async function handleAddNote() {
     const text = noteText.trim();
@@ -110,6 +124,13 @@ export function ExceptionDetailDrawer({
             </p>
           </DrawerSection>
         )}
+
+        <DrawerSection title="AI explanation">
+          <AiAnalysis
+            label="Explain this exception"
+            analyze={({ signal }) => analyzeException(exception.id, { signal })}
+          />
+        </DrawerSection>
 
         <DrawerSection title="Actions">
           <div className="flex flex-wrap gap-2">

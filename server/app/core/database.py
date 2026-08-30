@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -7,6 +8,12 @@ from .errors import DatabaseUnavailableError
 from ..models.enums import FileStatus
 
 logger = logging.getLogger("ledgerlens.database")
+
+# How long the reconnect watchdog waits before its first attempt and between
+# attempts. Kept long enough to ride out transient DNS/TLS blips without
+# hammering an unreachable host.
+WATCHDOG_INITIAL_DELAY = 5.0
+WATCHDOG_RETRY_INTERVAL = 15.0
 
 INDEXES = [
     # --- existing auth/workspace foundation ---
@@ -85,8 +92,17 @@ mongo = MongoState()
 
 async def connect_to_mongo() -> bool:
     """Connect to MongoDB. The API starts even if the database is unreachable,
-    but data endpoints respond 503 until the connection succeeds."""
+    but data endpoints respond 503 until the connection succeeds.
+
+    Safe to call repeatedly: any stale client from a previous attempt is closed
+    so the watchdog's reconnect attempts never leak connections."""
     settings = get_settings()
+
+    if mongo.client is not None:
+        mongo.client.close()
+        mongo.client = None
+    mongo.db = None
+    mongo.connected = False
 
     mongo.client = AsyncIOMotorClient(settings.mongodb_uri, serverSelectionTimeoutMS=3000)
     try:
@@ -100,6 +116,40 @@ async def connect_to_mongo() -> bool:
         mongo.connected = False
         logger.warning("MongoDB unavailable, running in degraded mode: %s", exc)
         return False
+
+
+async def watch_database_connection(
+    *,
+    initial_delay: float = WATCHDOG_INITIAL_DELAY,
+    retry_interval: float = WATCHDOG_RETRY_INTERVAL,
+) -> None:
+    """Background task that makes degraded mode self-healing.
+
+    connect_to_mongo runs exactly once at startup; any failure (including a
+    transient DNS/SRV or TLS hiccup against the configured URI) flipped the
+    API into degraded mode FOREVER — /api/health reported "degraded" and every
+    database endpoint 503'd until the process was restarted. That one-shot
+    behavior is why a brief MongoDB outage after a restart presented as a
+    persistent "workspace disappeared" regression.
+
+    This task keeps retrying connect_to_mongo whenever mongo.connected is
+    False, so a transient outage now recovers without any restart.
+    """
+    try:
+        await asyncio.sleep(initial_delay)
+    except asyncio.CancelledError:
+        return
+    while True:
+        await asyncio.sleep(retry_interval)
+        if mongo.connected:
+            continue
+        logger.warning("MongoDB unavailable — retrying connection…")
+        try:
+            await connect_to_mongo()
+        except asyncio.CancelledError:
+            return
+        except Exception:  # noqa: BLE001
+            logger.warning("MongoDB reconnect attempt failed", exc_info=True)
 
 
 async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:

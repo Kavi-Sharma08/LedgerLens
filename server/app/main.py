@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -7,7 +8,11 @@ from fastapi.responses import JSONResponse
 
 from .api.router import api_router
 from .core.config import get_settings
-from .core.database import close_mongo, connect_to_mongo
+from .core.database import (
+    close_mongo,
+    connect_to_mongo,
+    watch_database_connection,
+)
 from .core.errors import AppError
 
 logging.basicConfig(
@@ -25,11 +30,20 @@ async def lifespan(app: FastAPI):
     connected = await connect_to_mongo()
     if not connected:
         # Deliberately non-fatal: /api/health reports degraded state and
-        # data endpoints return 503 until MongoDB becomes reachable.
+        # data endpoints return 503 until MongoDB becomes reachable. The
+        # watchdog below keeps retrying so a transient outage (DNS/TLS/network
+        # blip at boot) self-heals instead of wedging the API for good.
         logger.warning("API started in degraded mode without MongoDB")
+
+    reconnect_task = asyncio.create_task(watch_database_connection())
 
     yield
 
+    reconnect_task.cancel()
+    try:
+        await reconnect_task
+    except asyncio.CancelledError:
+        pass
     await close_mongo()
     logger.info("%s stopped", settings.app_name)
 

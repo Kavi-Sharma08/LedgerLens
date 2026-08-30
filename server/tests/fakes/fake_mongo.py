@@ -125,7 +125,11 @@ class FakeFindCursor:
         self._sort_spec: list[tuple[str, int]] = []
         self._limit: int | None = None
 
-    def sort(self, spec):
+    def sort(self, spec, direction=None):
+        # Mirrors pymongo: Cursor.sort(key_or_list, direction=None) accepts
+        # either a list of (field, dir) tuples or a bare field + direction.
+        if direction is not None:
+            spec = [(spec, direction)]
         self._sort_spec = spec
         return self
 
@@ -152,6 +156,23 @@ class FakeFindCursor:
         if length is not None:
             docs = docs[:length]
         return copy.deepcopy(docs)
+
+    # Motor cursors support `async for doc in cursor`.
+    def __aiter__(self):
+        self._async_iter = iter(self.to_list_sync())
+        return self
+
+    def to_list_sync(self) -> list[dict]:
+        docs = self._sorted()
+        if self._limit is not None:
+            docs = docs[: self._limit]
+        return copy.deepcopy(docs)
+
+    async def __anext__(self):
+        try:
+            return next(self._async_iter)
+        except StopIteration:
+            raise StopAsyncIteration
 
 
 class FakeCollection:
