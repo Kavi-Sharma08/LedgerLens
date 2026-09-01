@@ -46,6 +46,7 @@ from typing import Any, Callable
 import httpx
 
 from .provider import (
+    AIError,
     AIProvider,
     AIProviderError,
     AIResponseError,
@@ -88,6 +89,14 @@ def _arg_keys(args: dict):
     return (args and args.keys()) or []
 
 
+def _truncate(text: str, limit: int) -> str:
+    """Best-effort truncation of a tool result for safe fallback rendering."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
 def _extract_error_message(response: httpx.Response) -> str:
     """Best-effort safe extraction of the provider error text for logs.
     Never logs API keys or full financial data."""
@@ -101,6 +110,41 @@ def _extract_error_message(response: httpx.Response) -> str:
     if isinstance(body, dict) and body.get("message"):
         return str(body["message"])
     return ""
+
+
+def _probe_response(data: Any) -> dict:
+    """Safe, secret-free summary of a provider chat response for diagnostics.
+
+    Logs ONLY shape diagnostics (finish_reason, whether the model emitted text
+    or tool_calls, char counts, usage counters) — never message content, tool
+    arguments, or any financial record.
+    """
+    try:
+        if not isinstance(data, dict):
+            return {"shape": type(data).__name__}
+        choices = data.get("choices")
+        probe: dict[str, Any] = {"choices": len(choices) if isinstance(choices, list) else None}
+        if isinstance(choices, list) and choices:
+            choice = choices[0]
+            if isinstance(choice, dict):
+                if choice.get("finish_reason"):
+                    probe["finish_reason"] = choice["finish_reason"]
+                msg = choice.get("message")
+                if isinstance(msg, dict):
+                    content = msg.get("content")
+                    probe["has_content"] = bool(content)
+                    if content:
+                        probe["content_chars"] = len(str(content))
+                    calls = msg.get("tool_calls")
+                    probe["tool_calls"] = len(calls) if isinstance(calls, list) else (0 if calls is None else "present")
+                    if msg.get("reasoning") is not None:
+                        probe["has_reasoning"] = bool(msg["reasoning"])
+        usage = data.get("usage")
+        if isinstance(usage, dict):
+            probe["usage"] = {k: usage[k] for k in ("prompt_tokens", "completion_tokens", "total_tokens") if k in usage}
+        return probe
+    except Exception:  # noqa: BLE001
+        return {"probe": "error"}
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +168,7 @@ class GroqProvider(AIProvider):
         self.model = model or settings.groq_model
         self._endpoint = f"{self.base_url}/chat/completions"
         self._timeout = settings.ai_request_timeout_seconds
+        self._max_tokens = settings.ai_max_tokens
         # Injectable transport keeps the client hermetic in tests.
         self._transport = transport
         # Use near-zero delays in test mode (transport injected).
@@ -220,6 +265,23 @@ class GroqProvider(AIProvider):
                 await asyncio.sleep(delay)
                 continue
 
+            if response.status_code == 413:
+                # Request (input + reserved output) exceeds the provider's
+                # per-minute token budget. Retrying the same payload cannot
+                # help, so surface a distinct, actionable category instead of
+                # the misleading generic "could not complete your request".
+                provider_msg = _extract_error_message(response)
+                logger.warning(
+                    "Groq request too large (HTTP 413): %s",
+                    provider_msg[:200],
+                )
+                raise AIProviderError(
+                    "The data for this analysis was too large for the AI to "
+                    "process in a single request. Try asking a more focused "
+                    "question or analyzing a smaller record.",
+                    category="request_too_large",
+                )
+
             if response.status_code in (401, 403):
                 raise AIProviderError(
                     "The AI assistant is not currently configured to respond. "
@@ -252,6 +314,10 @@ class GroqProvider(AIProvider):
                     "The AI assistant returned an unreadable response.",
                     category="ai_request_failed",
                 ) from exc
+            logger.debug(
+                "AI Groq OK status=%s probe=%s",
+                response.status_code, _probe_response(data),
+            )
             return data
 
         raise AIProviderError(
@@ -284,6 +350,7 @@ class GroqProvider(AIProvider):
             "model": self.model,
             "messages": [{"role": "system", "content": system}, *messages],
             "temperature": 0.1,
+            "max_tokens": self._max_tokens,
         }
         data = await self._post(payload)
         try:
@@ -301,7 +368,10 @@ class GroqProvider(AIProvider):
                 "The AI assistant returned an empty response.",
                 category="no_answer",
             )
-        logger.info("AI complete_once succeeded content_bytes=%s", len(content))
+        logger.info(
+            "AI complete_once OK finish_reason=%s content_bytes=%s",
+            choice.get("finish_reason"), len(content),
+        )
         return content
 
     # ------------------------------------------------------------------
@@ -336,7 +406,7 @@ class GroqProvider(AIProvider):
 
         tool_names_list = [t.get("function", {}).get("name") for t in tools]
         tool_name_set = {n for n in tool_names_list if n}
-        effective_rounds = min(max(1, max_tool_rounds), 5)
+        effective_rounds = min(max(1, max_tool_rounds), 3)
 
         logger.info(
             "AI run start model=%s tools=%s msg_count=%s max_rounds=%s",
@@ -352,12 +422,30 @@ class GroqProvider(AIProvider):
                 "model": self.model,
                 "messages": working,
                 "temperature": 0.1,
+                "max_tokens": self._max_tokens,
             }
             if tools:
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
 
-            data = await self._post(payload)
+            try:
+                data = await self._post(payload)
+            except AIError as exc:
+                # A provider failure mid-loop (e.g. 429, timeout, 5xx) must NOT
+                # hard-fail when we have already collected tool evidence. Switch
+                # to final synthesis so the user still gets an answer grounded in
+                # what we retrieved, instead of "AI unavailable".
+                if past_tool_calls:
+                    logger.warning(
+                        "AI tool round %s failed (%s); evidence already collected "
+                        "-> switching to final synthesis",
+                        round_index + 1, getattr(exc, "category", type(exc).__name__),
+                    )
+                    final_turn = await self._final_synthesis(working)
+                    turns.append(final_turn)
+                    return turns
+                raise
+
             try:
                 choice = data["choices"][0]
             except (KeyError, IndexError) as exc:
@@ -371,8 +459,9 @@ class GroqProvider(AIProvider):
             tool_calls = message.get("tool_calls")
 
             logger.info(
-                "AI round=%s tool_calls=%s has_content=%s",
+                "AI round=%s finish_reason=%s tool_calls=%s has_content=%s",
                 round_index,
+                choice.get("finish_reason"),
                 len(tool_calls) if tool_calls else 0,
                 bool(content),
             )
@@ -519,44 +608,133 @@ class GroqProvider(AIProvider):
                     "content": serialized,
                 })
 
-        # Max rounds exhausted: attempt one final synthesis call without tools.
+        # Max rounds exhausted: force final synthesis without tools, using all
+        # collected tool results (already in `working` as role=tool messages).
         logger.warning(
-            "AI tool loop exhausted after %s rounds - attempting final synthesis call",
+            "AI tool loop exhausted after %s rounds - forcing final synthesis call",
             effective_rounds,
         )
-        synthesis_messages = working + [{
-            "role": "user",
-            "content": (
-                "You have already retrieved all available evidence from LedgerLens. "
-                "Do NOT call any more tools. "
-                "Produce the final structured JSON answer now using the evidence "
-                "already present in this conversation."
-            ),
-        }]
-        synthesis_payload: dict[str, Any] = {
-            "model": self.model,
-            "messages": synthesis_messages,
-            "temperature": 0.1,
-            # No tools key -> forces a plain text reply.
-        }
-        try:
-            synth_data = await self._post(synthesis_payload)
-            synth_choice = synth_data["choices"][0]
-            synth_msg = synth_choice.get("message") or {}
-            synth_content = synth_msg.get("content") or ""
-            if synth_content:
-                logger.info("AI synthesis call produced answer bytes=%s", len(synth_content))
-                synthesis_turn: dict[str, Any] = {
-                    "role": "assistant",
-                    "content": synth_content,
-                }
-                turns.append(synthesis_turn)
-                return turns
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("AI synthesis call also failed: %s", exc)
+        final_turn = await self._final_synthesis(working)
+        turns.append(final_turn)
+        return turns
 
-        raise AIProviderError(
-            "LedgerLens could not compile the reconciliation explanation. "
-            "Please try again.",
-            category="no_answer",
-        )
+    # ------------------------------------------------------------------
+    # final synthesis - guaranteed non-empty terminal answer
+    # ------------------------------------------------------------------
+
+    async def _final_synthesis(self, working: list[dict]) -> dict:
+        """Force the model to produce a terminal TEXT answer from the evidence
+        already gathered, WITHOUT any tools.
+
+        Bounded: at most 2 Groq attempts. It never raises and never returns an
+        empty answer:
+          - if the model emits a tool call anyway (no tools were offered), its
+            arguments are treated as the answer;
+          - if every attempt returns empty or fails at the provider level, a
+            structured answer is auto-compiled from the collected tool evidence
+            so the user is NEVER sent away with "AI unavailable" or an empty
+            response.
+        """
+        attempts = 0
+        while attempts < 2:
+            attempts += 1
+            synthesis_messages = working + [{
+                "role": "user",
+                "content": (
+                    "You have already retrieved all available evidence from "
+                    "LedgerLens. Do NOT call any tools or functions. "
+                    "Produce the final structured JSON answer ONLY, grounded in "
+                    "the evidence already present in this conversation. "
+                    "If evidence is incomplete, say so - never invent figures."
+                ),
+            }]
+            synthesis_payload: dict[str, Any] = {
+                "model": self.model,
+                "messages": synthesis_messages,
+                "temperature": 0.1,
+                "max_tokens": self._max_tokens,
+                # No tools key -> forces a plain reply.
+            }
+            try:
+                synth_data = await self._post(synthesis_payload)
+                synth_choice = synth_data["choices"][0]
+                synth_msg = synth_choice.get("message") or {}
+                synth_content = synth_msg.get("content") or ""
+                if not synth_content and synth_msg.get("tool_calls"):
+                    # Should not happen without tools, but treat the first
+                    # tool-call's arguments as the final answer rather than lose
+                    # it (the model sometimes encodes JSON answers that way).
+                    args = (
+                        (synth_msg["tool_calls"][0].get("function") or {})
+                        .get("arguments") or "{}"
+                    )
+                    synth_content = args
+                if synth_content and synth_content.strip():
+                    logger.info(
+                        "AI final synthesis produced answer (attempt %s) bytes=%s",
+                        attempts, len(synth_content),
+                    )
+                    return {"role": "assistant", "content": synth_content}
+                logger.warning(
+                    "AI final synthesis returned empty content (attempt %s)",
+                    attempts,
+                )
+            except AIError as exc:
+                logger.warning(
+                    "AI final synthesis failed (attempt %s): category=%s",
+                    attempts, getattr(exc, "category", type(exc).__name__),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "AI final synthesis unexpected error (attempt %s): %s",
+                    attempts, type(exc).__name__,
+                )
+
+        logger.warning("AI final synthesis could not produce text; compiling evidence fallback")
+        return self._evidence_fallback_turn(working)
+
+    def _evidence_fallback_turn(self, working: list[dict]) -> dict:
+        """Auto-compile a guaranteed non-empty structured answer from the tool
+        evidence already collected, so the user always receives a real answer."""
+        tool_msgs = [m for m in working if m.get("role") == "tool"]
+        findings = []
+        for m in tool_msgs:
+            try:
+                data = _json_loads(m.get("content") or "{}")
+                text = _json_dumps(data) if isinstance(data, (dict, list)) else str(data)
+            except Exception:  # noqa: BLE001
+                text = str(m.get("content") or "")
+            findings.append({
+                "kind": "fact",
+                "text": _truncate(text, 600),
+                "detail": [],
+            })
+
+        if findings:
+            summary = (
+                f"LedgerLens successfully retrieved {len(tool_msgs)} piece(s) of "
+                "reconciliation evidence for this question. The synthesis step was "
+                "interrupted, so this answer reflects the retrieved evidence directly."
+            )
+        else:
+            findings.append({
+                "kind": "fact",
+                "text": "Reconciliation data was retrieved for the active run.",
+                "detail": [],
+            })
+            summary = "LedgerLens retrieved reconciliation data for this workspace."
+
+        answer = {
+            "title": "Reconciliation evidence (LedgerLens)",
+            "summary": summary,
+            "findings": findings,
+            "evidence": [],
+            "likely_causes": [],
+            "recommendations": ["Review the retrieved reconciliation evidence for the active run."],
+            "confidence": "medium",
+            "limitations": [
+                "The AI synthesis step was interrupted; this answer reflects the "
+                "raw retrieved tool evidence.",
+            ],
+        }
+        return {"role": "assistant", "content": _json_dumps(answer)}

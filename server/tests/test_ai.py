@@ -302,6 +302,30 @@ def test_provider_error_maps_to_502(env, fake_provider):
     assert r.json()["code"] == "ai_request_failed"
 
 
+def test_request_too_large_maps_to_413(env, fake_provider):
+    """A provider 'request_too_large' failure surfaces as HTTP 413 with its own
+    code, so the UI can show an actionable message instead of the generic
+    'Reconciliation analysis failed' text the real bug was producing."""
+    from app.services.ai.provider import AIProviderError
+
+    fake_provider.raise_error = AIProviderError(
+        "The data for this analysis was too large for the AI to process.",
+        category="request_too_large",
+    )
+    db = env
+    _seed_workspace(db, WS_A, OWNER_A)
+    txn = _make_txn(WS_A)
+    asyncio.run(transaction_repository.insert_transaction(db, WS_A, txn))
+    owner = _user(OWNER_A, "owner")
+    c, headers = _client_for(db, owner, WS_A)
+    with c:
+        r = c.post(f"/api/ai/transaction/{txn.id}/analyze", headers=headers)
+    assert r.status_code == 413, r.text
+    body = r.json()
+    assert body["code"] == "request_too_large"
+    assert "too large" in body["detail"].lower()
+
+
 def test_no_answer_maps_to_502_with_no_answer_code(env, fake_provider):
     """If the provider returns no usable textual answer, surface a specific
     'no_answer' error category rather than the generic AI failure."""
@@ -416,4 +440,93 @@ def test_ask_endpoint_rejects_foreign_match_id(env, fake_provider):
     with c:
         r = c.post("/api/ai/ask", json=payload, headers=headers)
     assert r.status_code == 404, r.text
+
+
+# ---------------------------------------------------------------------------
+# context-specific tool filtering
+# ---------------------------------------------------------------------------
+
+
+def test_transaction_analysis_sends_only_transaction_relevant_tools(env, fake_provider):
+    """The transaction entry point advertises a small, focused tool subset —
+    not all 16 schemas — so the model stops re-probing irrelevant data."""
+    db = env
+    _seed_workspace(db, WS_A, OWNER_A)
+    txn = _make_txn(WS_A)
+    asyncio.run(transaction_repository.insert_transaction(db, WS_A, txn))
+    owner = _user(OWNER_A, "owner")
+    c, headers = _client_for(db, owner, WS_A)
+    with c:
+        r = c.post(f"/api/ai/transaction/{txn.id}/analyze", headers=headers)
+    assert r.status_code == 200, r.text
+
+    sent = fake_provider.calls[0]["tools"]
+    assert set(sent) <= {"get_transaction", "get_transaction_context", "get_match_candidates", "search_workspace_transactions", "get_match"}
+    assert "get_exception" not in sent
+    assert "list_reconciliation_runs" not in sent
+    assert "get_reconciliation_summary" not in sent
+
+
+def test_match_analysis_sends_only_match_relevant_tools(env, fake_provider):
+    db = env
+    _seed_workspace(db, WS_A, OWNER_A)
+    from tests.test_ai_tools import _seed_run
+    run, txn_a, txn_b, txn_c, match, candidate = _seed_run(db, WS_A)
+    owner = _user(OWNER_A, "owner")
+    c, headers = _client_for(db, owner, WS_A)
+    with c:
+        r = c.post(f"/api/ai/match/{match.id}/analyze", headers=headers)
+    assert r.status_code == 200, r.text
+
+    sent = fake_provider.calls[0]["tools"]
+    assert set(sent) <= {"get_match", "get_transaction", "get_transaction_context", "get_reconciliation_run"}
+    assert "get_exception" not in sent
+    assert "get_reconciliation_summary" not in sent
+    assert "list_run_exceptions" not in sent
+
+
+def test_exception_analysis_sends_only_exception_relevant_tools(env, fake_provider):
+    db = env
+    from tests.test_ai_tools import _seed_run
+    from app.repositories import exception_repository
+    from app.models.enums import ExceptionReason, ExceptionStatus
+    from app.models.reconciliation_exception import ReconciliationException
+
+    _seed_workspace(db, WS_A, OWNER_A)
+    run, txn_a, txn_b, txn_c, *_ = _seed_run(db, WS_A, total=3, matched=1, unmatched=1, general_exceptions=0)
+
+    exc = ReconciliationException(
+        workspace_id=WS_A,
+        reconciliation_run_id=run.id,
+        transaction_ids=[txn_c.id],
+        reason_code=ExceptionReason.CANDIDATE_COLLISION,
+        detail="Two candidate matches.",
+        status=ExceptionStatus.OPEN,
+    )
+    asyncio.run(exception_repository.insert_exceptions(db, [exc]))
+
+    owner = _user(OWNER_A, "owner")
+    c, headers = _client_for(db, owner, WS_A)
+    with c:
+        r = c.post(f"/api/ai/exception/{exc.id}/analyze", headers=headers)
+    assert r.status_code == 200, r.text
+
+    sent = fake_provider.calls[0]["tools"]
+    assert set(sent) <= {"get_exception", "get_exception_context", "get_exception_notes", "get_transaction", "get_reconciliation_run"}
+    assert "get_match" not in sent
+    assert "list_run_unmatched" not in sent
+
+
+def test_chatbot_ask_uses_full_tool_set(env, fake_provider):
+    """The global copilot (no active entity) keeps the full 16-tool set."""
+    db = env
+    _seed_workspace(db, WS_A, OWNER_A)
+    owner = _user(OWNER_A, "owner")
+    c, headers = _client_for(db, owner, WS_A)
+    with c:
+        r = c.post("/api/ai/ask", json={"question": "What data is available?"}, headers=headers)
+    assert r.status_code == 200, r.text
+
+    from app.services.ai.tools import tool_names
+    assert set(fake_provider.calls[0]["tools"]) == set(tool_names())
 

@@ -60,6 +60,7 @@ _AI_CATEGORY_CODES = {
     "ai_request_failed": ("ai_request_failed", 502),
     "tool_execution_failed": ("tool_execution_failed", 502),
     "no_answer": ("no_answer", 502),
+    "request_too_large": ("request_too_large", 413),
 }
 
 

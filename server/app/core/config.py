@@ -43,6 +43,19 @@ class Settings(BaseSettings):
     groq_base_url: str = "https://api.groq.com/openai/v1"
     ai_request_timeout_seconds: int = 60
     ai_max_tool_rounds: int = 10
+    # Upper bound on tokens the model may emit per completion.
+    #
+    # This value COUNTS AGAINST the provider's per-minute token budget together
+    # with the input tokens. Groq's on-demand tier is capped at ~8000 TPM and
+    # rejects any single request whose input + max_tokens exceeds it with HTTP
+    # 413 "Payload Too Large". With 8192 reserved for output, EVERY request was
+    # rejected before the model could answer (input ~1000 + 8192 > 8000) and the
+    # UI showed "The AI assistant could not complete your request."
+    #
+    # 4096 leaves ample headroom for system prompt + tool schemas + evidence
+    # (measured: ~1000-3000 tokens) while still producing long structured
+    # JSON answers without hitting finish_reason="length".
+    ai_max_tokens: int = 4096
 
     @field_validator("cors_origins", mode="before")
     @classmethod

@@ -137,6 +137,10 @@ export function ErrorState({ error }) {
     title = "No analysis generated";
     message =
       "The AI did not produce a complete answer. Try rephrasing your question.";
+  } else if (code === "request_too_large") {
+    title = "Analysis data too large";
+    message =
+      "This record's data is too large for the AI to process in one request. Try asking a more focused question or analyzing a smaller record.";
   } else if (status === 404) {
     title = "Record not found";
     message =
@@ -145,6 +149,9 @@ export function ErrorState({ error }) {
     title = "Access restricted";
     message =
       "You don't have permission to analyze financial data in this workspace.";
+  } else if (code === "rate_limited" || status === 429) {
+    title = "Too many requests";
+    message = "LedgerLens AI is receiving high traffic right now. Please wait a moment and try again.";
   }
 
   return (

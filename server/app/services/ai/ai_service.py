@@ -32,7 +32,7 @@ from .provider import (
     get_provider,
 )
 from .schemas import AIFinding, AIEvidence, AIResponse, AskRequest
-from .tools import execute_tool, get_tools, tool_schemas
+from .tools import execute_tool, get_tools, tool_names, tool_schemas
 
 logger = logging.getLogger("ledgerlens.ai.service")
 
@@ -66,19 +66,34 @@ class AIAnalysisError(AIError):
 async def analyze_transaction(db, *, workspace_id, user_id, transaction_id, can_view, can_manage_exceptions):
     context = _build_context(db, workspace_id, user_id, can_view, can_manage_exceptions)
     prompt = _seed_with_transaction_guidance(transaction_id)
-    return await _run(context, system=prompts.TRANSACTION_ANALYSIS, prompt=prompt)
+    return await _run(
+        context,
+        system=prompts.TRANSACTION_ANALYSIS,
+        prompt=prompt,
+        tool_filter=_tools_for_context("transaction"),
+    )
 
 
 async def analyze_match(db, *, workspace_id, user_id, match_id, can_view, can_manage_exceptions):
     context = _build_context(db, workspace_id, user_id, can_view, can_manage_exceptions)
     prompt = {"role": "user", "content": f"Analyse the match with id {match_id}. Retrieve its details and explain it."}
-    return await _run(context, system=prompts.MATCH_ANALYSIS, prompt=prompt)
+    return await _run(
+        context,
+        system=prompts.MATCH_ANALYSIS,
+        prompt=prompt,
+        tool_filter=_tools_for_context("match"),
+    )
 
 
 async def analyze_exception(db, *, workspace_id, user_id, exception_id, can_view, can_manage_exceptions):
     context = _build_context(db, workspace_id, user_id, can_view, can_manage_exceptions)
     prompt = {"role": "user", "content": f"Analyse the exception with id {exception_id}. Retrieve its context and explain it."}
-    return await _run(context, system=prompts.EXCEPTION_ANALYSIS, prompt=prompt)
+    return await _run(
+        context,
+        system=prompts.EXCEPTION_ANALYSIS,
+        prompt=prompt,
+        tool_filter=_tools_for_context("exception"),
+    )
 
 
 async def analyze_reconciliation(db, *, workspace_id, user_id, run_id, can_view, can_manage_exceptions):
@@ -102,17 +117,125 @@ async def analyze_reconciliation(db, *, workspace_id, user_id, run_id, can_view,
             f"{json.dumps(evidence, default=str)}"
         ),
     }
-    return await _run_once(system=prompts.RECONCILIATION_INLINE, message=message)
+    try:
+        return await _run_once(system=prompts.RECONCILIATION_INLINE, message=message)
+    except AIAnalysisError as exc:
+        # If the LLM could not produce a usable structured answer (e.g. a
+        # transient truncation/empty response), do NOT fail the request — the
+        # evidence was already retrieved successfully. Fall back to an autocompiled
+        # explanation grounded in that evidence so the reconciliation page always
+        # displays a real answer for this run_id instead of "AI unavailable".
+        if not (getattr(exc, "category", "") in ("no_answer", "ai_request_failed", "request_too_large")):
+            raise
+        logger.warning(
+            "Reconciliation analysis fell back to autocompiled evidence: %s",
+            str(exc)[:120],
+        )
+        return _evidence_to_response(evidence, run_id)
+
+
+def _evidence_to_response(evidence: dict, run_id: str) -> AIResponse:
+    """Auto-compile a grounded, non-empty AIResponse from assembled evidence.
+
+    Used as a last-resort fallback so a reconciliation explanation is ALWAYS
+    returned when the underlying run data was successfully retrieved. Every
+    figure is taken from the actual tool evidence — never invented."""
+    run = (evidence.get("run") or {}).get("run") or {}
+    total = run.get("totalTransactions")
+    matched = run.get("matchedCount")
+    unmatched = run.get("unmatchedCount")
+    exceptions = run.get("exceptionCount")
+
+    matches = evidence.get("matches") or []
+    unms = evidence.get("unmatched") or []
+    excs = evidence.get("exceptions") or []
+
+    summary = (
+        f"Reconciliation run {run_id}"
+        f" reports {total if total is not None else 'N/A'} total transaction(s),"
+        f" {matched if matched is not None else 'N/A'} matched,"
+        f" {unmatched if unmatched is not None else 'N/A'} unmatched, and"
+        f" {exceptions if exceptions is not None else 'N/A'} exception(s)."
+    )
+
+    findings = []
+    if total is not None:
+        findings.append(AIFinding(kind="fact", text=f"Total transactions: {total}."))
+    if matched is not None:
+        findings.append(AIFinding(kind="fact", text=f"Matched transactions: {matched}."))
+    if unmatched is not None:
+        findings.append(AIFinding(kind="fact", text=f"Unmatched transactions: {unmatched}."))
+    if exceptions is not None:
+        findings.append(AIFinding(kind="fact", text=f"Exceptions: {exceptions}."))
+    if matches:
+        findings.append(
+            AIFinding(kind="fact", text=f"{len(matches)} match(es) were retrieved as sample evidence.")
+        )
+    if unms:
+        findings.append(
+            AIFinding(
+                kind="fact",
+                text=f"{len(unms)} highest-order unmatched record(s) retrieved as sample evidence.",
+            )
+        )
+    if excs:
+        findings.append(
+            AIFinding(
+                kind="fact",
+                text=f"{len(excs)} exception(s) retrieved as sample evidence.",
+            )
+        )
+    if not findings:
+        findings.append(AIFinding(kind="inference", text=f"No detail counts were present in the retrieved evidence for run {run_id}."))
+
+    evidence_items = []
+    for m in (matches or [])[:5]:
+        _append_evidence(evidence_items, m.get("match_id"), m.get("confidence"), m.get("reasons"), "match")
+    for u in (unms or [])[:5]:
+        label = u.get("reference") or u.get("counterparty") or u.get("id")
+        _append_evidence(evidence_items, u.get("id"), label, u.get("amount"), "transaction")
+    for e in (excs or [])[:3]:
+        _append_evidence(evidence_items, e.get("exception_id"), e.get("reasonCode"), e.get("detail"), "exception")
+
+    return AIResponse(
+        title=f"Reconciliation run {run_id} (autocompiled)",
+        summary=summary,
+        findings=findings,
+        evidence=evidence_items,
+        likely_causes=[],
+        recommendations=["Review the unmatched and exception records for this run."],
+        confidence="medium",
+        limitations=[
+            "The AI model did not produce a structured narrative; this summary was "
+            "compiled directly from the retrieved reconciliation evidence.",
+        ],
+    )
+
+
+def _append_evidence(items: list[AIEvidence], entity_id, label: str, value, entity_type: str) -> None:
+    if not entity_id and not label and not value:
+        return
+    items.append(
+        AIEvidence(
+            label=str(label if label else entity_type),
+            value=str(value) if value else "",
+            source="LedgerLens",
+            entity_type=entity_type,
+            entity_id=str(entity_id) if entity_id else "",
+        )
+    )
+
+
+def choice_get(evidence: dict, path: tuple) -> Any:
+    node = evidence
+    for key in path:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    return node
 
 
 async def _assemble_reconciliation_evidence(context, run_id: str) -> dict:
-    """Gather bounded reconciliation evidence by calling the existing tools.
-
-    Reuses the exact evidence-shaping and permission gating of the tool layer so
-    the analysis is grounded and workspace-scoped, without spinning up the full
-    multi-round tool loop.
-    """
-    from .tools import execute_tool
 
     async def _call(name: str, args: dict) -> Any:
         result = execute_tool(context, name, args)
@@ -122,39 +245,74 @@ async def _assemble_reconciliation_evidence(context, run_id: str) -> dict:
 
     summary = await _call("get_reconciliation_summary", {"reconciliation_run_id": run_id})
 
-    matches, unmatched, exceptions = {}, {}, {}
+    matches, matches_msg = [], None
     try:
-        matches = await _call(
+        raw = await _call(
             "list_run_matches",
-            {"reconciliation_run_id": run_id, "limit": 10},
+            {"reconciliation_run_id": run_id, "limit": 5},
         )
+        matches = [{
+            "match_id": m.get("match_id"),
+            "confidence": m.get("confidence"),
+            "reasons": (m.get("reasons") or [])[:4],
+        } for m in (raw.get("matches") or []) if m]
+        matches_msg = raw.get("message")
     except Exception:  # noqa: BLE001
-        matches = {}
+        matches = []
 
+    unmatched, unmatched_msg, unmatched_total = [], None, None
     try:
-        unmatched = await _call(
+        raw = await _call(
             "list_run_unmatched",
-            {"reconciliation_run_id": run_id, "sort_by": "amount", "order": "desc", "limit": 15},
+            {"reconciliation_run_id": run_id, "sort_by": "amount", "order": "desc", "limit": 5},
         )
+        unmatched = [{
+            "id": t.get("id"),
+            "amount": t.get("amount"),
+            "currency": t.get("currency"),
+            "reference": t.get("reference"),
+            "counterparty": t.get("counterparty"),
+            "transaction_date": t.get("transaction_date"),
+        } for t in (raw.get("transactions") or []) if t]
+        unmatched_total = raw.get("total_unmatched_count")
+        unmatched_msg = raw.get("message")
     except Exception:  # noqa: BLE001
-        unmatched = {}
+        unmatched = []
 
+    exceptions, exceptions_msg = [], None
     try:
-        exceptions = await _call(
+        raw = await _call(
             "list_run_exceptions",
-            {"reconciliation_run_id": run_id, "limit": 15},
+            {"reconciliation_run_id": run_id, "limit": 5},
         )
+        exceptions = [{
+            "exception_id": e.get("exception_id"),
+            "reasonCode": e.get("reasonCode"),
+            "status": e.get("status"),
+            "detail": _clip(str(e.get("detail") or ""), 160),
+        } for e in (raw.get("exceptions") or []) if e]
+        exceptions_msg = raw.get("message")
     except Exception:  # noqa: BLE001
-        exceptions = {}
+        exceptions = []
 
-    evidence = {"run": summary, "matches": matches.get("matches", []), "unmatched": unmatched.get("unmatched", []), "exceptions": exceptions.get("exceptions", [])}
-    if matches.get("message"):
-        evidence["matchesMessage"] = matches["message"]
-    if unmatched.get("message"):
-        evidence["unmatchedMessage"] = unmatched["message"]
-    if exceptions.get("message"):
-        evidence["exceptionsMessage"] = exceptions["message"]
+    evidence = {
+        "run": summary,
+        "matches": matches,
+        "unmatched": unmatched,
+        "unmatchedTotal": unmatched_total,
+        "exceptions": exceptions,
+    }
+    for key, val in (("matchesMessage", matches_msg), ("unmatchedMessage", unmatched_msg), ("exceptionsMessage", exceptions_msg)):
+        if val:
+            evidence[key] = val
     return evidence
+
+
+def _clip(text: str, limit: int) -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
 
 
 async def ask(db, *, workspace_id, user_id, request: AskRequest, can_view, can_manage_exceptions):
@@ -188,7 +346,12 @@ async def ask(db, *, workspace_id, user_id, request: AskRequest, can_view, can_m
         "content": f"{request.question}{context_str}\nRetrieve the necessary tool evidence for this active reconciliation before answering.",
     }
     messages = history_messages + [current_message]
-    return await _run(context, system=prompts.ASK_SYSTEM, messages=messages)
+    return await _run(
+        context,
+        system=prompts.ASK_SYSTEM,
+        messages=messages,
+        tool_filter=_tools_for_context("chatbot"),
+    )
 
 
 
@@ -221,14 +384,82 @@ def _build_context(db, workspace_id: ObjectId, user_id: ObjectId, can_view: bool
     )
 
 
-async def _run(context, *, system: str, prompt: dict | None = None, messages: list[dict] | None = None) -> AIResponse:
+# Tools that are only relevant to a single analysis context. Filtering the
+# provider's advertised tool set per entry point both cuts token waste (all 16
+# schemas had been re-sent on every Groq request) and narrows the model's
+# choices so it stops re-probing irrelevant data and reaches its final answer.
+_TRANSACTION_TOOLS = {
+    "get_transaction",
+    "get_transaction_context",
+    "get_match_candidates",
+    "search_workspace_transactions",
+    "get_match",
+}
+
+_MATCH_TOOLS = {
+    "get_match",
+    "get_transaction",
+    "get_transaction_context",
+    "get_reconciliation_run",
+}
+
+_EXCEPTION_TOOLS = {
+    "get_exception",
+    "get_exception_context",
+    "get_exception_notes",
+    "get_transaction",
+    "get_reconciliation_run",
+}
+
+_RECONCILIATION_TOOLS = {
+    "get_reconciliation_summary",
+    "get_reconciliation_run",
+    "list_reconciliation_runs",
+    "list_run_matches",
+    "list_run_unmatched",
+    "list_run_exceptions",
+    "get_match_candidates",
+}
+
+
+def _tools_for_context(context_type: str) -> set[str] | None:
+    """Return the tool-name whitelist for an analysis entry point.
+
+    `chatbot` (the global /api/ai/ask without an active entity) gets the full
+    set; every focused analysis gets a small, context-appropriate subset.
+    """
+    mapping = {
+        "transaction": _TRANSACTION_TOOLS,
+        "match": _MATCH_TOOLS,
+        "exception": _EXCEPTION_TOOLS,
+        "reconciliation": _RECONCILIATION_TOOLS,
+    }
+    subset = mapping.get(context_type)
+    if subset is None or context_type == "chatbot":
+        return None
+    all_names = set(tool_names())
+    return subset & all_names
+
+
+def _filtered_schemas(tool_filter: set[str] | None) -> list[dict]:
+    """Return the provider tool schemas, restricted to `tool_filter` when given.
+
+    When `tool_filter` is None the full tool set is returned (chatbot path).
+    """
+    schemas = tool_schemas()
+    if not tool_filter:
+        return schemas
+    return [t for t in schemas if (t.get("function") or {}).get("name") in tool_filter]
+
+
+async def _run(context, *, system: str, prompt: dict | None = None, messages: list[dict] | None = None, tool_filter: set[str] | None = None) -> AIResponse:
     settings = get_settings()
     try:
         provider = get_provider()
     except AIUnavailableError as exc:
         raise AIAnalysisError(str(exc), category=exc.category) from exc
 
-    tools = tool_schemas()
+    tools = _filtered_schemas(tool_filter)
 
     async def _execute(name: str, args: dict) -> dict:
         return await execute_tool(context, name, args)
@@ -245,6 +476,11 @@ async def _run(context, *, system: str, prompt: dict | None = None, messages: li
             timeout=settings.ai_request_timeout_seconds,
         )
     except AIError as exc:
+        logger.warning(
+            "AI _run provider failure category=%s message=%s",
+            getattr(exc, "category", "ai_request_failed"),
+            str(exc)[:200],
+        )
         raise AIAnalysisError(str(exc), category=getattr(exc, "category", "ai_request_failed")) from exc
 
     return _parse_response(turns)
@@ -278,6 +514,11 @@ async def _run_once(*, system: str, message: dict) -> AIResponse:
             # immediately, always wrapped as AIAnalysisError so the route can
             # map it to a stable error code.
             if getattr(exc, "category", None) != "no_answer":
+                logger.warning(
+                    "AI _run_once provider failure category=%s message=%s",
+                    getattr(exc, "category", "ai_request_failed"),
+                    str(exc)[:200],
+                )
                 raise AIAnalysisError(
                     str(exc), category=getattr(exc, "category", "ai_request_failed")
                 ) from exc

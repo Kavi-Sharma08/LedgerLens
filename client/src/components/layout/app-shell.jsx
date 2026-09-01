@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
 import { LogoMark } from "@/components/common/logo";
@@ -9,7 +10,7 @@ import { ApiStatusBadge } from "@/components/common/api-status-badge";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { TopbarActions } from "@/components/layout/topbar-actions";
 import { AskLedgerLens } from "@/components/domain/ask-ledgerlens";
-import { AiContextProvider } from "@/components/common/ai-context";
+import { AiContextProvider, useAiContext } from "@/components/common/ai-context";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -119,8 +120,62 @@ export function AppShell({ user, workspace, allWorkspaces, primaryNav, secondary
 
         {/* Workspace-scoped AI Reconciliation Copilot */}
         <AskLedgerLens />
+        <NavigationTargetHandler />
       </div>
     </AiContextProvider>
   );
+}
+
+/**
+ * Consumes the AI panel's "View {entity}" evidence actions (`navigationTarget`)
+ * and routes the app to the referenced record.
+ *
+ * The backend emits four entity types for evidence — transaction, match,
+ * exception, reconciliation — but only reconciliation runs have a dedicated
+ * deep-linkable page (all other records are opened via drawers rooted on a
+ * run). So the mapping is:
+ *   - reconciliation        -> /dashboard/reconciliations/{id}
+ *   - transaction / match   -> the run detail page (drawer entry point) when a
+ *                              run is in context, else the run list / transactions.
+ *   - exception             -> /dashboard/exceptions
+ *
+ * The copilot is closed on navigation so the journey continues on the target
+ * page rather than behind the chat panel.
+ */
+function NavigationTargetHandler() {
+  const router = useRouter();
+  const { aiContext, navigationTarget, setNavigationTarget, setCopilotOpen } = useAiContext();
+
+  useEffect(() => {
+    if (!navigationTarget) return;
+
+    const type = String(navigationTarget.type || "").toLowerCase();
+    const id = navigationTarget.id;
+
+    if (type === "reconciliation" || type === "reconciliation_run") {
+      if (id) router.push(`/dashboard/reconciliations/${id}`);
+    } else if (type === "exception") {
+      router.push("/dashboard/exceptions");
+    } else if (type === "transaction" || type === "match") {
+      if (aiContext.reconciliationRunId) {
+        router.push(`/dashboard/reconciliations/${aiContext.reconciliationRunId}`);
+      } else if (type === "transaction") {
+        router.push("/dashboard/transactions");
+      } else {
+        router.push("/dashboard/reconciliations");
+      }
+    }
+
+    setCopilotOpen(false);
+    setNavigationTarget(null);
+  }, [
+    navigationTarget,
+    aiContext.reconciliationRunId,
+    router,
+    setCopilotOpen,
+    setNavigationTarget,
+  ]);
+
+  return null;
 }
 

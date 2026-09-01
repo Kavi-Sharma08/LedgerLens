@@ -219,6 +219,29 @@ def test_http_429_surfaces_as_rate_limited(monkeypatch):
     assert attempts == 4  # Initial attempt + 3 retries
 
 
+def test_http_413_surfaces_as_request_too_large_and_is_not_retried():
+    """A 413 'Payload Too Large' (input + reserved output exceeds the provider's
+    per-minute token budget) must surface as a distinct, actionable category —
+    NOT the misleading generic ai_request_failed — and must NOT be retried,
+    since re-sending the same oversized payload cannot help."""
+    attempts = 0
+
+    def handler(request):
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(
+            413, headers={"Content-Type": "application/json"},
+            json={"error": {"message": "Request too large for model value"}},
+        )
+
+    provider = _provider(handler)
+    with pytest.raises(AIProviderError) as exc:
+        asyncio.run(_run_provider(provider))
+    assert exc.value.category == "request_too_large"
+    assert "too large" in str(exc.value).lower()
+    assert attempts == 1  # no retry for an oversized payload
+
+
 
 
 def test_timeout_surfaces_as_ai_unavailable():
@@ -374,8 +397,8 @@ def test_max_rounds_exhaustion_triggers_fallback_synthesis_call():
 
     turns = asyncio.run(_run_provider(provider, execute_tool=_exec))
 
-    # Should attempt synthesis call after max rounds
-    assert len(requests) == 6  # 5 tool rounds + 1 synthesis round
+    # Should attempt synthesis call after max rounds (effective cap is 3)
+    assert len(requests) == 4  # 3 tool rounds + 1 synthesis round
     assert "tools" not in requests[-1]  # synthesis call had no tools
     assert turns[-1]["content"] == FINAL_CONTENT
 
@@ -395,3 +418,132 @@ def test_complete_once_single_shot():
     assert res == "direct answer"
     assert len(requests) == 1
     assert "tools" not in requests[0]
+
+
+# ---------------------------------------------------------------------------
+# reconciliation /ask path - tool loop -> final LLM text -> API response
+# ---------------------------------------------------------------------------
+
+
+def _ask_client(db):
+    """Seed a workspace + reconciliation run and return a test client that can
+    call /api/ai/ask with that run bound as active context."""
+    from tests.fakes.fake_mongo import FakeDatabase
+    from tests.test_ai import _client_for, _seed_workspace, _user
+    from tests.test_ai_tools import _seed_run
+
+    _seed_workspace(db, WS_A, OWNER_A)
+    run, *_ = _seed_run(db, WS_A)
+    owner = _user(OWNER_A, "owner")
+    c, headers = _client_for(db, owner, WS_A)
+    return c, headers, run
+
+
+def _response_body(message):
+    return httpx.Response(200, json={"choices": [{"message": message}]})
+
+
+def test_ask_reconciliation_tool_loop_produces_final_text(monkeypatch):
+    """The acceptance path: user question + reconciliation_run_id ->
+    Groq keeps requesting reconciliation tools -> final tool-loop synthesis
+    returns the final structured TEXT -> FastAPI returns 200 with the answer
+    (the request NEVER ends in 'AI unavailable' / 'no_answer' / empty)."""
+    from tests.fakes.fake_mongo import FakeDatabase
+
+    db = FakeDatabase()
+    db.declare_standard_indexes()
+    c, headers, run = _ask_client(db)
+    run_id = str(run.id)
+
+    requests = []
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.content)
+        requests.append(body)
+        # Normal tool rounds: model keeps requesting reconciliation tools in
+        # separate rounds (summary, then exceptions, then matches).
+        if "tools" in body:
+            names = ["get_reconciliation_summary", "list_run_exceptions", "list_run_matches"]
+            idx = min(len(requests) - 1, len(names) - 1)
+            return _response_body({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": f"call_{len(requests)}",
+                    "type": "function",
+                    "function": {"name": names[idx], "arguments": json.dumps({"reconciliation_run_id": run_id})},
+                }],
+            })
+        # Final synthesis (no tools) -> the model produces the final structured text.
+        return _response_body({"role": "assistant", "content": FINAL_CONTENT})
+
+    provider = _provider(handler)
+    monkeypatch.setattr(ai_service, "get_provider", lambda: provider)
+
+    payload = {
+        "question": "Explain this reconciliation run, including matched, unmatched and exceptions.",
+        "reconciliation_run_id": run_id,
+    }
+    with c:
+        r = c.post("/api/ai/ask", json=payload, headers=headers)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["title"] == "Explained"
+    assert body["confidence"] == "high"
+    assert body["findings"][0]["kind"] == "fact"
+
+    # The tool loop ran against real seeded run data, exhausted its rounds,
+    # and the final synthesis (no tools) returned the answer.
+    tool_msgs = [m for m in requests[-1]["messages"] if m.get("role") == "tool"]
+    assert tool_msgs, "collected tool results were not passed back for synthesis"
+    assert "tools" not in requests[-1]
+    assert r.status_code == 200
+
+
+def test_ask_never_fails_with_ai_unavailable_when_synthesis_hits_429(monkeypatch):
+    """When the model exhausts the tool loop AND the final synthesis request is
+    rate-limited (429), the provider must NOT surface 'AI unavailable' if tool
+    evidence was already collected - it auto-compiles a structured answer from
+    that evidence so /api/ai/ask still returns 200 with a non-empty answer."""
+    from tests.fakes.fake_mongo import FakeDatabase
+
+    db = FakeDatabase()
+    db.declare_standard_indexes()
+    c, headers, run = _ask_client(db)
+    run_id = str(run.id)
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.content)
+        if "tools" in body:
+            return _response_body({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "get_reconciliation_summary", "arguments": json.dumps({"reconciliation_run_id": run_id})},
+                }],
+            })
+        # Final synthesis -> persistent 429 (bounded retries exhausted).
+        return httpx.Response(429, headers={"Retry-After": "0.001"}, json={})
+
+    provider = _provider(handler)
+    monkeypatch.setattr(ai_service, "get_provider", lambda: provider)
+
+    payload = {
+        "question": "Explain this reconciliation run, including matched, unmatched and exceptions.",
+        "reconciliation_run_id": run_id,
+    }
+    with c:
+        r = c.post("/api/ai/ask", json=payload, headers=headers)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # A real, non-empty structured answer was compiled from the collected evidence.
+    assert body["title"] == "Reconciliation evidence (LedgerLens)"
+    assert body["summary"]
+    assert body["findings"]
+    # It must NOT be one of the forbidden terminal states.
+    assert body["title"] not in {"AI unavailable", "Analysis unavailable"}
+    assert "could not complete" not in body["summary"].lower()
