@@ -30,7 +30,7 @@ export function uploadFile({ sourceId, file, onProgress, signal }) {
     if (file.type) params.set("mimeType", file.type);
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/backend/files/upload?${params.toString()}`);
+    xhr.open("POST", `/api/backend/api/files/upload?${params.toString()}`);
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.setRequestHeader("Accept", "application/json");
     xhr.responseType = "json";
