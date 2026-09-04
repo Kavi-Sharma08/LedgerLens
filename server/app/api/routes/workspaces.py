@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import re
-
+import os
 from bson import ObjectId
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -523,7 +523,7 @@ async def create_invitation(
     # Send invitation email via Nodemailer
     try:
         import httpx
-        app_url = "http://localhost:3000"
+        app_url = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
         accept_url = f"{app_url}/accept-invitation/{raw_token}"
         # Fire-and-forget email via the Next.js API
         async with httpx.AsyncClient() as client:
