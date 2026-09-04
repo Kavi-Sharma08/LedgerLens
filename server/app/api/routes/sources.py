@@ -9,9 +9,9 @@ from ...models.workspace import Workspace
 from ...repositories import source_repository
 from ...repositories.common import InvalidCursorError, MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE
 from ...schemas.common import paginated
-from ...schemas.source import SourceCreate, SourcePublic
+from ...schemas.source import SourceCreate, SourcePublic, SourceUpdate
 from ...services.mappers import to_source_public
-from ...services.source_service import create_source
+from ...services.source_service import create_source, update_source, delete_source
 
 router = APIRouter()
 
@@ -72,3 +72,36 @@ async def get_financial_source(
 ):
     source = await source_repository.get_by_id(db, workspace.id, source_id)
     return to_source_public(source)
+
+
+@router.patch("/{source_id}", response_model=SourcePublic)
+async def update_financial_source(
+    source_id: str,
+    payload: SourceUpdate,
+    workspace: Workspace = Depends(get_current_workspace),
+    db=Depends(get_database),
+    _: User = Depends(get_current_user),
+    __=Depends(require_permission("manage_sources")),
+):
+    """Update a source's name, institution, or currency."""
+    source = await update_source(
+        db,
+        workspace.id,
+        source_id,
+        name=payload.name,
+        institution=payload.institution,
+        currency=payload.currency,
+    )
+    return to_source_public(source)
+
+
+@router.delete("/{source_id}", status_code=204)
+async def delete_financial_source(
+    source_id: str,
+    workspace: Workspace = Depends(get_current_workspace),
+    db=Depends(get_database),
+    _: User = Depends(get_current_user),
+    __=Depends(require_permission("manage_sources")),
+):
+    """Delete a source and all its imported data."""
+    await delete_source(db, workspace.id, source_id)

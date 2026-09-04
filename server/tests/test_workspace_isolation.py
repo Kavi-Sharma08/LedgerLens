@@ -246,3 +246,41 @@ async def test_fingerprint_duplicate_detection_is_source_scoped_not_global(fake_
     for source in (src_1, src_2):
         txns = await transaction_repository.list_for_sources(fake_db, WORKSPACE_ID, [source.id])
         assert all(t.potential_duplicate_ids == [] for t in txns)
+
+
+@pytest.mark.asyncio
+async def test_delete_source_does_not_affect_other_workspace(fake_db):
+    """Deleting a source in workspace A must not touch workspace B's data."""
+    await _seed_workspace(fake_db, WORKSPACE_ID, "Alpha")
+    await _seed_workspace(fake_db, OTHER_WORKSPACE, "Beta")
+
+    src_a = await create_source(fake_db, WORKSPACE_ID, name="A Bank", source_type=SourceType.BANK)
+    src_b = await create_source(fake_db, OTHER_WORKSPACE, name="B Bank", source_type=SourceType.BANK)
+
+    await _upload(fake_db, WORKSPACE_ID, src_a, "a.csv")
+    await _upload(fake_db, OTHER_WORKSPACE, src_b, "b.csv")
+
+    # Both have transactions
+    txns_a = await transaction_repository.list_for_sources(fake_db, WORKSPACE_ID, [src_a.id])
+    txns_b = await transaction_repository.list_for_sources(fake_db, OTHER_WORKSPACE, [src_b.id])
+    assert len(txns_a) == 2
+    assert len(txns_b) == 2
+
+    # Delete A's source
+    from app.services.source_service import delete_source
+    await delete_source(fake_db, WORKSPACE_ID, src_a.id)
+
+    # A's data is gone
+    txns_a_after = await transaction_repository.list_for_sources(fake_db, WORKSPACE_ID, [src_a.id])
+    assert len(txns_a_after) == 0
+
+    # B's data is untouched
+    txns_b_after = await transaction_repository.list_for_sources(fake_db, OTHER_WORKSPACE, [src_b.id])
+    assert len(txns_b_after) == 2
+
+    # B's source still exists
+    from app.core.errors import SourceNotFoundError
+    with pytest.raises(SourceNotFoundError):
+        await source_repository.get_by_id(fake_db, WORKSPACE_ID, src_a.id)
+    still_exists = await source_repository.get_by_id(fake_db, OTHER_WORKSPACE, src_b.id)
+    assert still_exists.id == src_b.id

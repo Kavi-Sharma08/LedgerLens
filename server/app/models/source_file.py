@@ -10,8 +10,8 @@ from .user import utcnow
 
 @dataclass
 class SourceFile:
-    """One imported financial document. Binary content lives behind the
-    storage interface (storageKey), never inside MongoDB."""
+    """One imported financial document. The original file bytes are not retained;
+    this record holds import metadata and processing results."""
 
     workspace_id: ObjectId
     source_id: ObjectId
@@ -22,7 +22,6 @@ class SourceFile:
 
     mime_type: str | None = None
     file_size: int | None = None
-    storage_key: str | None = None
     status: FileStatus = FileStatus.UPLOADED
     period_start: object | None = None  # date | None
     period_end: object | None = None    # date | None
@@ -46,7 +45,6 @@ class SourceFile:
             "originalFileName": self.original_file_name,
             "mimeType": self.mime_type,
             "fileSize": self.file_size,
-            "storageKey": self.storage_key,
             "checksum": self.checksum,
             "status": self.status.value if isinstance(self.status, FileStatus) else self.status,
             "periodStart": to_utc_midnight(self.period_start) if self.period_start else None,
@@ -75,7 +73,6 @@ class SourceFile:
             checksum=doc.get("checksum", ""),
             mime_type=doc.get("mimeType"),
             file_size=doc.get("fileSize"),
-            storage_key=doc.get("storageKey"),
             status=FileStatus(doc.get("status", FileStatus.UPLOADED.value)),
             period_start=period_start.date() if period_start else None,
             period_end=period_end.date() if period_end else None,

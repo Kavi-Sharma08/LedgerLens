@@ -27,6 +27,29 @@ class SourceCreate(BaseModel):
             raise ValueError(str(exc)) from exc
 
 
+class SourceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    institution: str | None = Field(default=None, max_length=160)
+    currency: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("Source name can't be empty.")
+        return value.strip() if value is not None else value
+
+    @field_validator("currency")
+    @classmethod
+    def currency_valid(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            return validate_currency(value)
+        except MoneyError as exc:
+            raise ValueError(str(exc)) from exc
+
+
 class SourcePublic(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -41,4 +64,4 @@ class SourcePublic(BaseModel):
     createdAt: str | None = None
 
 
-__all__ = ["SourceCreate", "SourcePublic", "SourceType", "SourceStatus"]
+__all__ = ["SourceCreate", "SourceUpdate", "SourcePublic", "SourceType", "SourceStatus"]

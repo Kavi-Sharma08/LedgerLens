@@ -8,15 +8,19 @@ import logging
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
-from ..core.errors import DuplicateFileError, InvalidFileError
+from ..core.errors import DuplicateFileError, InvalidFileError, SourceNotFoundError
 from ..models.enums import FileStatus
 from ..models.source import Source
 from ..models.source_file import SourceFile
-from ..repositories import source_file_repository, source_repository
+from ..repositories import (
+    raw_transaction_repository,
+    source_file_repository,
+    source_repository,
+    transaction_repository,
+)
 from ..services.normalization.fingerprint import compute_file_checksum
 from .ingestion import extraction as content_extraction
 from .ingestion import pipeline
-from .ingestion.storage import get_storage
 
 logger = logging.getLogger("ledgerlens.sources")
 
@@ -97,17 +101,14 @@ async def upload_source_file(
         )
         return pipeline.IngestionSummary(file=duplicate_row)
 
-    storage_key, size = get_storage().save(str(workspace_id), file_name, content)
-
     source_file = SourceFile(
         workspace_id=workspace_id,
         source_id=source.id,
-        file_name=f"{ObjectId()}-{file_name}",
+        file_name=file_name,
         original_file_name=file_name,
         checksum=checksum,
         mime_type=mime_type,
-        file_size=size,
-        storage_key=storage_key,
+        file_size=len(content),
         status=FileStatus.UPLOADED,
         uploaded_by=uploaded_by,
     )
@@ -126,3 +127,42 @@ async def upload_source_file(
         summary.processed_count, summary.skipped_duplicate_count, summary.error_count,
     )
     return summary
+
+
+async def update_source(
+    db,
+    workspace_id: ObjectId,
+    source_id: ObjectId,
+    *,
+    name: str | None = None,
+    institution: str | None = None,
+    currency: str | None = None,
+) -> Source:
+    """Update a source's mutable fields.
+
+    Raises SourceNotFoundError if the source doesn't exist or belongs to
+    another workspace. Raises DuplicateSourceError on name collision."""
+    source = await source_repository.get_by_id(db, workspace_id, source_id)
+    updated = await source_repository.update_source(
+        db, workspace_id, source.id,
+        name=name, institution=institution, currency=currency,
+    )
+    if updated is None:
+        raise SourceNotFoundError()
+    return updated
+
+
+async def delete_source(db, workspace_id: ObjectId, source_id: ObjectId) -> None:
+    """Delete a source and all associated data (files, raw transactions,
+    transactions). Reconciliation run history is preserved as audit context."""
+    source = await source_repository.get_by_id(db, workspace_id, source_id)
+
+    raw_deleted = await raw_transaction_repository.delete_by_source(db, workspace_id, source.id)
+    txn_deleted = await transaction_repository.delete_by_source(db, workspace_id, source.id)
+    files_deleted = await source_file_repository.delete_by_source(db, workspace_id, source.id)
+    await source_repository.delete_source(db, workspace_id, source.id)
+
+    logger.info(
+        "source deleted workspace=%s source=%s files=%d txns=%d raws=%d",
+        workspace_id, source.id, files_deleted, txn_deleted, raw_deleted,
+    )

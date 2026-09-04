@@ -424,3 +424,42 @@ def test_member_can_manage_notes_but_not_status(env):
             headers=_headers(),
         )
         assert r.status_code == 200, r.text
+
+
+def test_owner_can_update_source_viewer_cannot(env):
+    owner = _user(OWNER_ID, "owner")
+    viewer = _user(VIEWER_ID, "viewer")
+
+    src_ids = _create_sources(env, owner)
+    src_id = src_ids[0]
+
+    with client_for(env, owner, WS_ID) as c:
+        r = c.patch(
+            f"/api/sources/{src_id}",
+            json={"name": "Updated"},
+            headers=_headers(),
+        )
+        assert r.status_code == 200, r.text
+
+    with client_for(env, viewer, WS_ID) as c:
+        r = c.patch(
+            f"/api/sources/{src_id}",
+            json={"name": "Hacked"},
+            headers=_headers(),
+        )
+        assert r.status_code == 403, r.text
+
+
+def test_owner_can_delete_source_viewer_cannot(env):
+    owner = _user(OWNER_ID, "owner")
+    viewer = _user(VIEWER_ID, "viewer")
+
+    src_ids = _create_sources(env, owner)
+
+    with client_for(env, viewer, WS_ID) as c:
+        r = c.delete(f"/api/sources/{src_ids[0]}", headers=_headers())
+        assert r.status_code == 403, r.text
+
+    with client_for(env, owner, WS_ID) as c:
+        r = c.delete(f"/api/sources/{src_ids[0]}", headers=_headers())
+        assert r.status_code == 204, r.text

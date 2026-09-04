@@ -102,3 +102,37 @@ async def list_sources(
 
 async def count_sources(db, workspace_id: ObjectId) -> int:
     return await db[COLLECTION].count_documents({"workspaceId": workspace_id})
+
+
+async def update_source(
+    db,
+    workspace_id: ObjectId,
+    source_id: ObjectId,
+    *,
+    name: str | None = None,
+    institution: str | None = None,
+    currency: str | None = None,
+) -> Source | None:
+    """Update mutable source fields. Returns the updated source or None."""
+    from datetime import datetime, timezone
+
+    updates: dict = {"updatedAt": datetime.now(timezone.utc)}
+    if name is not None:
+        updates["name"] = name.strip()
+    if institution is not None:
+        updates["institution"] = institution
+    if currency is not None:
+        updates["currency"] = currency
+
+    doc = await db[COLLECTION].find_one_and_update(
+        {"_id": source_id, "workspaceId": workspace_id},
+        {"$set": updates},
+        return_document=True,
+    )
+    return Source.from_document(doc) if doc else None
+
+
+async def delete_source(db, workspace_id: ObjectId, source_id: ObjectId) -> bool:
+    """Delete a source. Returns True if deleted."""
+    result = await db[COLLECTION].delete_one({"_id": source_id, "workspaceId": workspace_id})
+    return result.deleted_count > 0

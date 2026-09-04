@@ -283,6 +283,14 @@ class FakeCollection:
         self.database.store[self.name] = [d for d in self.docs if not _matches(d, query)]
         return type("DeleteResult", (), {"deleted_count": before - len(self.database.store[self.name])})()
 
+    async def delete_one(self, query: dict):
+        before = len(self.docs)
+        for i, doc in enumerate(self.docs):
+            if _matches(doc, query):
+                self.database.store[self.name].pop(i)
+                return type("DeleteResult", (), {"deleted_count": 1})()
+        return type("DeleteResult", (), {"deleted_count": 0})()
+
 
 class FakeDatabase:
     """Async-compatible stand-in for Motor's database object."""

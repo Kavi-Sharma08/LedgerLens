@@ -117,3 +117,11 @@ async def update_processing_result(
             }
         },
     )
+
+
+async def delete_by_source(db, workspace_id: ObjectId, source_id: ObjectId) -> int:
+    """Delete all source files for a given source. Returns count deleted."""
+    result = await db[COLLECTION].delete_many(
+        {"workspaceId": workspace_id, "sourceId": source_id}
+    )
+    return result.deleted_count

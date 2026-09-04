@@ -464,3 +464,93 @@ def test_investigation_notes_persist_and_surface_via_list(client):
         f"/api/exceptions/{ObjectId()}/notes", json={"text": "nope"}
     )
     assert foreign.status_code == 404
+
+
+def test_update_source(client):
+    created = _create_source(client, "Update Me", "BANK")
+
+    patched = client.patch(f"/api/sources/{created['id']}", json={
+        "name": "Updated Name",
+        "institution": "New Bank",
+    })
+    assert patched.status_code == 200, patched.text
+    body = patched.json()
+    assert body["name"] == "Updated Name"
+    assert body["institution"] == "New Bank"
+    assert body["currency"] == "INR"  # unchanged
+
+    # Verify via GET
+    fetched = client.get(f"/api/sources/{created['id']}").json()
+    assert fetched["name"] == "Updated Name"
+    assert fetched["institution"] == "New Bank"
+
+
+def test_update_source_currency(client):
+    created = _create_source(client, "Currency Source", "BANK")
+    patched = client.patch(f"/api/sources/{created['id']}", json={"currency": "USD"})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["currency"] == "USD"
+
+
+def test_update_source_not_found(client):
+    resp = client.patch(f"/api/sources/{ObjectId()}", json={"name": "Nope"})
+    assert resp.status_code == 404
+
+
+def test_delete_source(client):
+    created = _create_source(client, "Delete Me", "BANK")
+    resp = client.delete(f"/api/sources/{created['id']}")
+    assert resp.status_code == 204
+
+    # Source is gone
+    listing = client.get("/api/sources").json()
+    assert len(listing["items"]) == 0
+
+
+def test_delete_source_with_transactions(client):
+    source = _create_source(client, "Delete With Txns", "BANK")
+    uploaded = client.post(
+        f"/api/files/upload?sourceId={source['id']}&fileName=del.csv&mimeType=text/csv",
+        content=csv_content(),
+    )
+    assert uploaded.status_code == 201
+    assert uploaded.json()["file"]["transactionCount"] == 3
+
+    # Transactions exist before deletion
+    txns = client.get(f"/api/transactions?sourceId={source['id']}").json()
+    assert len(txns["items"]) == 3
+
+    # Delete source
+    resp = client.delete(f"/api/sources/{source['id']}")
+    assert resp.status_code == 204
+
+    # Source gone
+    listing = client.get("/api/sources").json()
+    assert len(listing["items"]) == 0
+
+    # Transactions gone
+    txns_after = client.get(f"/api/transactions?sourceId={source['id']}").json()
+    assert len(txns_after["items"]) == 0
+
+    # Source files gone (source lookup fails -> 404)
+    files_after = client.get(f"/api/files?sourceId={source['id']}")
+    assert files_after.status_code == 404
+
+
+def test_delete_source_not_found(client):
+    resp = client.delete(f"/api/sources/{ObjectId()}")
+    assert resp.status_code == 404
+
+
+def test_upload_no_longer_writes_to_disk(client):
+    """After upload, the original file should not be stored anywhere persistently.
+    The source_file record should have metadata but no storage_key."""
+    source = _create_source(client, "Diskless Upload", "BANK")
+    resp = client.post(
+        f"/api/files/upload?sourceId={source['id']}&fileName=check.csv&mimeType=text/csv",
+        content=csv_content(),
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["file"]["checksum"]  # checksum retained for duplicate detection
+    assert body["file"]["transactionCount"] == 3

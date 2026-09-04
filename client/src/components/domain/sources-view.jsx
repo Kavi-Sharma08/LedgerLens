@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Layers, Plus, Upload } from "lucide-react";
+import { Layers, MoreHorizontal, Pencil, Plus, Trash2, Upload } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,13 +16,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge, humanize } from "@/components/domain/status-badge";
 import { SourceTypeIcon, sourceTypeLabel } from "@/components/domain/source-type";
-import { listSources, createSource } from "@/lib/api/sources";
+import { listSources, createSource, updateSource, deleteSource } from "@/lib/api/sources";
 import { listFiles, uploadFile } from "@/lib/api/files";
 import { formatCount, formatDateTime } from "@/lib/format";
 
@@ -37,6 +43,8 @@ export function SourcesView() {
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [openSourceId, setOpenSourceId] = useState(null);
+  const [editingSource, setEditingSource] = useState(null);
+  const [deletingSource, setDeletingSource] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +84,7 @@ export function SourcesView() {
         <p className="text-sm text-muted-foreground">
           Connect at least two sources to start reconciling between them.
         </p>
-        <CreateSourceDialog onCreated={handleCreated} />
+        <SourceDialog onCreated={handleCreated} />
       </div>
 
       {loading ? (
@@ -107,48 +115,99 @@ export function SourcesView() {
                 onToggle={() =>
                   setOpenSourceId((current) => (current === source.id ? null : source.id))
                 }
+                onEdit={() => setEditingSource(source)}
+                onDelete={() => setDeletingSource(source)}
               />
             </li>
           ))}
         </ul>
       )}
+
+      {editingSource && (
+        <SourceDialog
+          source={editingSource}
+          onCreated={() => {
+            setEditingSource(null);
+            handleCreated();
+          }}
+          onClose={() => setEditingSource(null)}
+        />
+      )}
+
+      {deletingSource && (
+        <DeleteSourceDialog
+          source={deletingSource}
+          onDeleted={() => {
+            setDeletingSource(null);
+            handleCreated();
+          }}
+          onClose={() => setDeletingSource(null)}
+        />
+      )}
     </div>
   );
 }
 
-function SourceCard({ source, expanded, onToggle }) {
+function SourceCard({ source, expanded, onToggle, onEdit, onDelete }) {
   return (
     <div className="rounded-xl border border-border bg-card transition-shadow hover:shadow-sm">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex w-full items-start gap-3 p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-xl"
-      >
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent">
-          <SourceTypeIcon type={source.type} className="size-5 text-primary" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate font-medium text-foreground">{source.name}</span>
-            <Badge variant={source.status === "ACTIVE" ? "success" : "neutral"}>
-              {humanize(source.status)}
-            </Badge>
-          </span>
-          <span className="mt-0.5 block truncate text-sm text-muted-foreground">
-            {source.institution || sourceTypeLabel(source.type)} · {source.currency}
-          </span>
-        </span>
-        <span
-          aria-hidden="true"
-          className={
-            "mt-1 shrink-0 text-muted-foreground transition-transform " +
-            (expanded ? "rotate-180" : "")
-          }
+      <div className="flex items-start gap-0">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-start gap-3 p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-xl"
         >
-          ▾
-        </span>
-      </button>
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent">
+            <SourceTypeIcon type={source.type} className="size-5 text-primary" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="truncate font-medium text-foreground">{source.name}</span>
+              <Badge variant={source.status === "ACTIVE" ? "success" : "neutral"}>
+                {humanize(source.status)}
+              </Badge>
+            </span>
+            <span className="mt-0.5 block truncate text-sm text-muted-foreground">
+              {source.institution || sourceTypeLabel(source.type)} · {source.currency}
+            </span>
+          </span>
+          <span
+            aria-hidden="true"
+            className={
+              "mt-1 shrink-0 text-muted-foreground transition-transform " +
+              (expanded ? "rotate-180" : "")
+            }
+          >
+            ▾
+          </span>
+        </button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="mr-2 mt-2 shrink-0"
+                aria-label="Source actions"
+              />
+            }
+          >
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onEdit}>
+              <Pencil className="size-4" />
+              Edit source
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={onDelete}>
+              <Trash2 className="size-4" />
+              Delete source
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       {expanded && (
         <div className="border-t border-border p-4 pt-3">
@@ -335,45 +394,66 @@ const SOURCE_TYPE_ITEMS = [
   { value: "MANUAL", label: "Manual entry" },
 ];
 
-function CreateSourceDialog({ onCreated }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [type, setType] = useState("BANK");
-  const [institution, setInstitution] = useState("");
-  const [creating, setCreating] = useState(false);
+function SourceDialog({ source, onCreated, onClose }) {
+  const isEditing = !!source;
+  const [open, setOpen] = useState(!isEditing);
+  const [name, setName] = useState(source?.name || "");
+  const [type, setType] = useState(source?.type || "BANK");
+  const [institution, setInstitution] = useState(source?.institution || "");
+  const [currency, setCurrency] = useState(source?.currency || "INR");
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+
+  // When editing, open the dialog immediately.
+  useEffect(() => {
+    if (isEditing) setOpen(true);
+  }, [isEditing]);
+
+  function handleClose() {
+    setOpen(false);
+    onClose?.();
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setCreating(true);
+    setSubmitting(true);
     setError(null);
     try {
-      await createSource({
-        name: name.trim(),
-        type,
-        institution: institution.trim() || undefined,
-      });
-      setName("");
-      setInstitution("");
+      if (isEditing) {
+        await updateSource(source.id, {
+          name: name.trim(),
+          institution: institution.trim() || undefined,
+          currency: currency.trim() || undefined,
+        });
+      } else {
+        await createSource({
+          name: name.trim(),
+          type,
+          institution: institution.trim() || undefined,
+        });
+      }
       setOpen(false);
       onCreated();
     } catch (err) {
-      setError(err?.message || "The source couldn't be created.");
+      setError(err?.message || `The source couldn't be ${isEditing ? "updated" : "created"}.`);
     } finally {
-      setCreating(false);
+      setSubmitting(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm"><Plus aria-hidden="true" /> Add source</Button>} />
+    <Dialog open={open} onOpenChange={(v) => (v ? setOpen(v) : handleClose())}>
+      {!isEditing && (
+        <DialogTrigger render={<Button size="sm"><Plus aria-hidden="true" /> Add source</Button>} />
+      )}
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Add a financial source</DialogTitle>
+            <DialogTitle>{isEditing ? "Edit source" : "Add a financial source"}</DialogTitle>
             <DialogDescription>
-              A source is one system of record — a bank account, a payment processor.
-              You&rsquo;ll import its statements as files.
+              {isEditing
+                ? "Update the source details below."
+                : "A source is one system of record — a bank account, a payment processor. You\u2019ll import its statements as files."}
             </DialogDescription>
           </DialogHeader>
 
@@ -390,16 +470,18 @@ function CreateSourceDialog({ onCreated }) {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="source-type">Type</Label>
-              <Select
-                value={type}
-                onValueChange={setType}
-                items={SOURCE_TYPE_ITEMS}
-                placeholder="Choose a type"
-                triggerClassName="w-full"
-              />
-            </div>
+            {!isEditing && (
+              <div className="space-y-1.5">
+                <Label htmlFor="source-type">Type</Label>
+                <Select
+                  value={type}
+                  onValueChange={setType}
+                  items={SOURCE_TYPE_ITEMS}
+                  placeholder="Choose a type"
+                  triggerClassName="w-full"
+                />
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label htmlFor="source-institution">Institution (optional)</Label>
@@ -411,6 +493,19 @@ function CreateSourceDialog({ onCreated }) {
                 maxLength={160}
               />
             </div>
+
+            {isEditing && (
+              <div className="space-y-1.5">
+                <Label htmlFor="source-currency">Currency</Label>
+                <Input
+                  id="source-currency"
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value)}
+                  placeholder="e.g. INR"
+                  maxLength={3}
+                />
+              </div>
+            )}
           </div>
 
           {error && (
@@ -420,14 +515,75 @@ function CreateSourceDialog({ onCreated }) {
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!name.trim() || creating}>
-              {creating ? "Creating…" : "Create source"}
+            <Button type="submit" disabled={!name.trim() || submitting}>
+              {submitting
+                ? isEditing ? "Saving…" : "Creating…"
+                : isEditing ? "Save changes" : "Create source"}
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteSourceDialog({ source, onDeleted, onClose }) {
+  const [open, setOpen] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState(null);
+
+  function handleClose() {
+    setOpen(false);
+    onClose?.();
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteSource(source.id);
+      setOpen(false);
+      onDeleted();
+    } catch (err) {
+      setError(err?.message || "The source couldn't be deleted.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => (v ? setOpen(v) : handleClose())}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete this source?</DialogTitle>
+          <DialogDescription>
+            This will permanently remove &ldquo;{source.name}&rdquo; and its imported transaction
+            data. This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-destructive">
+            {error}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={handleClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={deleting}
+            onClick={handleDelete}
+          >
+            {deleting ? "Deleting…" : "Delete source"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

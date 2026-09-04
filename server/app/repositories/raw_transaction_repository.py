@@ -66,3 +66,11 @@ async def list_for_file(
         else None
     )
     return Page(items=[RawTransaction.from_document(d) for d in docs], next_cursor=next_cursor)
+
+
+async def delete_by_source(db, workspace_id: ObjectId, source_id: ObjectId) -> int:
+    """Delete all raw transactions for a given source. Returns count deleted."""
+    result = await db[COLLECTION].delete_many(
+        {"workspaceId": workspace_id, "sourceId": source_id}
+    )
+    return result.deleted_count

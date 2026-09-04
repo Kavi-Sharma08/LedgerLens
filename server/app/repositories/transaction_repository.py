@@ -243,3 +243,11 @@ async def list_for_sources(
     )
     docs = await cursor.to_list(length=None)
     return [Transaction.from_document(d) for d in docs]
+
+
+async def delete_by_source(db, workspace_id: ObjectId, source_id: ObjectId) -> int:
+    """Delete all transactions for a given source. Returns count deleted."""
+    result = await db[COLLECTION].delete_many(
+        {"workspaceId": workspace_id, "sourceId": source_id}
+    )
+    return result.deleted_count

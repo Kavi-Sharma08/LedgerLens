@@ -22,3 +22,11 @@ export function createSource(payload) {
 export function getSource(sourceId, { signal } = {}) {
   return api.get(`/api/sources/${encodeURIComponent(sourceId)}`, { signal });
 }
+
+export function updateSource(sourceId, payload) {
+  return api.patch(`/api/sources/${encodeURIComponent(sourceId)}`, payload);
+}
+
+export function deleteSource(sourceId) {
+  return api.delete(`/api/sources/${encodeURIComponent(sourceId)}`);
+}
