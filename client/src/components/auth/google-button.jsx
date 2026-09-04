@@ -42,7 +42,7 @@ function GoogleButton({ children = "Continue with Google", disabled, redirectTo 
       type="button"
       variant="outline"
       disabled={disabled || pending}
-      className="w-full bg-card"
+      className="h-11 w-full bg-card text-[15px] text-foreground shadow-xs"
       onClick={() => {
         setPending(true);
         signIn("google", { redirectTo });

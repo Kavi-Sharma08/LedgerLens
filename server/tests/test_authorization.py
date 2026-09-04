@@ -349,3 +349,78 @@ def test_owner_grant_enables_member_action_and_revoke_denies(env):
             json={"sourceIds": src_ids},
             headers=_headers(),
         ).status_code == 403
+
+
+def test_member_can_manage_notes_but_not_status(env):
+    """Investigation notes are open to any active member with view_data, while
+    status changes still require manage_exceptions (owner/admin only)."""
+    owner = _user(OWNER_ID, "owner")
+    member = _user(MEMBER_ID, "member")
+    exc_id = ObjectId()
+
+    def seed():
+        async def _do():
+            from datetime import datetime, timezone
+            from app.models.reconciliation_exception import ReconciliationException
+
+            e = ReconciliationException(
+                id=exc_id,
+                workspace_id=WS_ID,
+                reconciliation_run_id=ObjectId(),
+                transaction_ids=[],
+                notes=[],
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+            doc = e.to_document()
+            doc["_id"] = exc_id
+            await env["exceptions"].insert_one(doc)
+
+        asyncio.run(_do())
+
+    seed()
+
+    # MEMBER (default view_data) can create, then edit and delete a note.
+    with client_for(env, member, WS_ID) as c:
+        created = c.post(
+            f"/api/exceptions/{exc_id}/notes",
+            json={"text": "A member insight"},
+            headers=_headers(),
+        )
+        assert created.status_code == 200, created.text
+        note = created.json()
+        assert note["text"] == "A member insight"
+        assert note["createdBy"]
+
+        updated = c.patch(
+            f"/api/exceptions/{exc_id}/notes/{note['id']}",
+            json={"text": "A member insight (edited)"},
+            headers=_headers(),
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["text"] == "A member insight (edited)"
+
+        deleted = c.delete(
+            f"/api/exceptions/{exc_id}/notes/{note['id']}", headers=_headers()
+        )
+        assert deleted.status_code == 200, deleted.text
+
+    # MEMBER cannot change status (manage_exceptions is not granted to MEMBER).
+    with client_for(env, member, WS_ID) as c:
+        assert (
+            c.patch(
+                f"/api/exceptions/{exc_id}/status",
+                json={"status": "RESOLVED"},
+                headers=_headers(),
+            ).status_code
+            == 403
+        )
+
+    # OWNER can still manage status.
+    with client_for(env, owner, WS_ID) as c:
+        r = c.patch(
+            f"/api/exceptions/{exc_id}/status",
+            json={"status": "RESOLVED"},
+            headers=_headers(),
+        )
+        assert r.status_code == 200, r.text

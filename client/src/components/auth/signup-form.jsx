@@ -174,14 +174,15 @@ function SignupForm() {
       <GoogleButton redirectTo={isInvitation ? `/accept-invitation/${invitationToken}` : "/dashboard"} />
       <FormDivider label="or sign up with email" />
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <div className="space-y-2">
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
+        <div className="space-y-1.5">
           <Label htmlFor="name">Full name</Label>
           <Input
             id="name"
             name="name"
             autoComplete="name"
-            placeholder="Alex Rivera"
+            placeholder="Your full name"
+            className="h-11"
             value={values.name}
             onChange={(e) => setField("name", e.target.value)}
             aria-invalid={Boolean(fieldErrors.name)}
@@ -203,12 +204,13 @@ function SignupForm() {
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="workspaceName">Workspace name</Label>
             <Input
               id="workspaceName"
               name="workspaceName"
-              placeholder="Acme Inc."
+              placeholder="e.g. Acme Corp"
+              className="h-11"
               value={values.workspaceName}
               onChange={(e) => setField("workspaceName", e.target.value)}
               aria-invalid={Boolean(fieldErrors.workspaceName)}
@@ -218,7 +220,7 @@ function SignupForm() {
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor="signup-email">Work email</Label>
           <Input
             id="signup-email"
@@ -226,8 +228,9 @@ function SignupForm() {
             type="email"
             autoComplete="email"
             placeholder="you@company.com"
-            value={values.email}
+            className="h-11"
             readOnly={isInvitation}
+            value={values.email}
             onChange={(e) => setField("email", e.target.value)}
             aria-invalid={Boolean(fieldErrors.email)}
             aria-describedby={fieldErrors.email ? "signup-email-error" : undefined}
@@ -240,12 +243,13 @@ function SignupForm() {
           <FieldError id="signup-email-error" message={fieldErrors.email} />
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor="signup-password">Password</Label>
           <PasswordInput
             name="password"
             autoComplete="new-password"
             placeholder="At least 8 characters"
+            className="h-11"
             value={values.password}
             onChange={(e) => setField("password", e.target.value)}
             aria-invalid={Boolean(fieldErrors.password)}
@@ -261,12 +265,13 @@ function SignupForm() {
           <FieldError id="signup-password-error" message={fieldErrors.password} />
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor="confirm-password">Confirm password</Label>
           <PasswordInput
             name="confirmPassword"
             autoComplete="new-password"
             placeholder="Re-enter your password"
+            className="h-11"
             value={values.confirmPassword}
             onChange={(e) => setField("confirmPassword", e.target.value)}
             aria-invalid={Boolean(fieldErrors.confirmPassword)}
@@ -297,7 +302,7 @@ function SignupForm() {
           </div>
         )}
 
-        <Button type="submit" className="w-full" disabled={submitting}>
+        <Button type="submit" className="h-11 w-full text-[15px]" disabled={submitting}>
           {submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
           {submitting
             ? isInvitation

@@ -24,7 +24,7 @@ export default function SignupPage() {
   return (
     <AuthShell
       title="Create your workspace"
-      subtitle="Start reconciling your financial records in minutes. Free while in beta."
+      subtitle="Start reconciling your financial records."
       footer={
         <>
           Already have an account?{" "}
@@ -36,6 +36,15 @@ export default function SignupPage() {
           </Link>
         </>
       }
+      panel={{
+        headline: "Your reconciliation workspace",
+        text: "Connect your financial records, run reconciliation, and investigate exceptions from one place.",
+        points: [
+          "Compare records across sources",
+          "Review unmatched transactions",
+          "Investigate exceptions with evidence",
+        ],
+      }}
     >
       <Suspense fallback={<SignupFallback />}>
         <SignupForm />

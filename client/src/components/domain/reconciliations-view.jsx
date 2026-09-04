@@ -135,9 +135,9 @@ const RUN_COLUMNS = [
     render: (row) => (
       <Link
         href={`/dashboard/reconciliations/${row.id}`}
-        className="font-mono text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 outline-none rounded-sm"
+        className="text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 outline-none rounded-sm"
       >
-        {shortRunId(row.id)}
+        Reconciliation run
       </Link>
     ),
   },
@@ -145,9 +145,8 @@ const RUN_COLUMNS = [
     key: "sourceIds",
     header: "Sources",
     render: (row) => (
-      <span className="flex items-center gap-1 text-muted-foreground" aria-label={`${row.sourceIds.length} sources`}>
-        <span className="tabular-nums">{row.sourceIds.length}</span>
-        <span>sources compared</span>
+      <span className="text-muted-foreground">
+        {row.sourceIds.length} sources
       </span>
     ),
   },
@@ -193,8 +192,12 @@ const RUN_COLUMNS = [
   },
 ];
 
-function shortRunId(id) {
-  return `R-${String(id).slice(-6).toUpperCase()}`;
+function cnCheckbox(checked) {
+  return [
+    "flex w-full cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors outline-none",
+    checked ? "border-primary/40 bg-accent" : "border-border hover:bg-muted/60",
+    "focus-visible:ring-2 focus-visible:ring-ring/50",
+  ].join(" ");
 }
 
 function StartReconciliationDialog({ open, onOpenChange, onStarted }) {
@@ -249,7 +252,7 @@ function StartReconciliationDialog({ open, onOpenChange, onStarted }) {
             <DialogTitle>Start reconciliation</DialogTitle>
             <DialogDescription>
               Select two or more sources. LedgerLens compares every record between
-              them using its matching engine — this may take a moment for large imports.
+              them — this may take a moment for large imports.
             </DialogDescription>
           </DialogHeader>
 
@@ -318,12 +321,4 @@ function StartReconciliationDialog({ open, onOpenChange, onStarted }) {
       </DialogContent>
     </Dialog>
   );
-}
-
-function cnCheckbox(checked) {
-  return [
-    "flex w-full cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors outline-none",
-    checked ? "border-primary/40 bg-accent" : "border-border hover:bg-muted/60",
-    "focus-visible:ring-2 focus-visible:ring-ring/50",
-  ].join(" ");
 }

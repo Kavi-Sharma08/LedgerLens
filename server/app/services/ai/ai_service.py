@@ -24,6 +24,7 @@ from ...repositories import workspace_member_repository as member_repo
 import json as _json
 
 from . import prompts
+from .formatting import compile_evidence_answer, scrub_response
 from .provider import (
     AIError,
     AIProviderError,
@@ -131,99 +132,32 @@ async def analyze_reconciliation(db, *, workspace_id, user_id, run_id, can_view,
             "Reconciliation analysis fell back to autocompiled evidence: %s",
             str(exc)[:120],
         )
-        return _evidence_to_response(evidence, run_id)
+        return _evidence_to_response(evidence)
 
 
-def _evidence_to_response(evidence: dict, run_id: str) -> AIResponse:
-    """Auto-compile a grounded, non-empty AIResponse from assembled evidence.
+def _evidence_to_response(evidence: dict) -> AIResponse:
+    """Auto-compile a clean, human-readable AIResponse from assembled evidence.
 
     Used as a last-resort fallback so a reconciliation explanation is ALWAYS
     returned when the underlying run data was successfully retrieved. Every
-    figure is taken from the actual tool evidence — never invented."""
+    figure is taken from the actual tool evidence — never invented — and
+    rendered through the shared presentation helpers so no raw IDs, JSON or
+    backend field names ever reach the user.
+    """
     run = (evidence.get("run") or {}).get("run") or {}
-    total = run.get("totalTransactions")
-    matched = run.get("matchedCount")
-    unmatched = run.get("unmatchedCount")
-    exceptions = run.get("exceptionCount")
-
-    matches = evidence.get("matches") or []
-    unms = evidence.get("unmatched") or []
-    excs = evidence.get("exceptions") or []
-
-    summary = (
-        f"Reconciliation run {run_id}"
-        f" reports {total if total is not None else 'N/A'} total transaction(s),"
-        f" {matched if matched is not None else 'N/A'} matched,"
-        f" {unmatched if unmatched is not None else 'N/A'} unmatched, and"
-        f" {exceptions if exceptions is not None else 'N/A'} exception(s)."
-    )
-
-    findings = []
-    if total is not None:
-        findings.append(AIFinding(kind="fact", text=f"Total transactions: {total}."))
-    if matched is not None:
-        findings.append(AIFinding(kind="fact", text=f"Matched transactions: {matched}."))
-    if unmatched is not None:
-        findings.append(AIFinding(kind="fact", text=f"Unmatched transactions: {unmatched}."))
-    if exceptions is not None:
-        findings.append(AIFinding(kind="fact", text=f"Exceptions: {exceptions}."))
-    if matches:
-        findings.append(
-            AIFinding(kind="fact", text=f"{len(matches)} match(es) were retrieved as sample evidence.")
-        )
-    if unms:
-        findings.append(
-            AIFinding(
-                kind="fact",
-                text=f"{len(unms)} highest-order unmatched record(s) retrieved as sample evidence.",
-            )
-        )
-    if excs:
-        findings.append(
-            AIFinding(
-                kind="fact",
-                text=f"{len(excs)} exception(s) retrieved as sample evidence.",
-            )
-        )
-    if not findings:
-        findings.append(AIFinding(kind="inference", text=f"No detail counts were present in the retrieved evidence for run {run_id}."))
-
-    evidence_items = []
-    for m in (matches or [])[:5]:
-        _append_evidence(evidence_items, m.get("match_id"), m.get("confidence"), m.get("reasons"), "match")
-    for u in (unms or [])[:5]:
-        label = u.get("reference") or u.get("counterparty") or u.get("id")
-        _append_evidence(evidence_items, u.get("id"), label, u.get("amount"), "transaction")
-    for e in (excs or [])[:3]:
-        _append_evidence(evidence_items, e.get("exception_id"), e.get("reasonCode"), e.get("detail"), "exception")
-
-    return AIResponse(
-        title=f"Reconciliation run {run_id} (autocompiled)",
-        summary=summary,
-        findings=findings,
-        evidence=evidence_items,
-        likely_causes=[],
-        recommendations=["Review the unmatched and exception records for this run."],
-        confidence="medium",
-        limitations=[
-            "The AI model did not produce a structured narrative; this summary was "
-            "compiled directly from the retrieved reconciliation evidence.",
-        ],
-    )
-
-
-def _append_evidence(items: list[AIEvidence], entity_id, label: str, value, entity_type: str) -> None:
-    if not entity_id and not label and not value:
-        return
-    items.append(
-        AIEvidence(
-            label=str(label if label else entity_type),
-            value=str(value) if value else "",
-            source="LedgerLens",
-            entity_type=entity_type,
-            entity_id=str(entity_id) if entity_id else "",
-        )
-    )
+    compiled = compile_evidence_answer([
+        ("get_reconciliation_summary", {"run": run}) if run else ("get_reconciliation_summary", None),
+        ("list_run_matches", {"matches": evidence.get("matches") or []}),
+        (
+            "list_run_unmatched",
+            {
+                "transactions": evidence.get("unmatched") or [],
+                "total_unmatched_count": evidence.get("unmatchedTotal"),
+            },
+        ),
+        ("list_run_exceptions", {"exceptions": evidence.get("exceptions") or []}),
+    ])
+    return scrub_response(AIResponse(**compiled))
 
 
 def choice_get(evidence: dict, path: tuple) -> Any:
@@ -558,7 +492,7 @@ def _parse_response(turns: list[dict]) -> AIResponse:
             "The AI did not generate an answer. Please try again.",
             category="no_answer",
         )
-    return _coerce(data)
+    return scrub_response(_coerce(data))
 
 
 def _extract_json(raw: str) -> dict | None:

@@ -100,6 +100,11 @@ function MatchDetail({ match, runId, onDecision }) {
           The engine grouped {match.transactionIds?.length ?? 1} record
           {(match.transactionIds?.length ?? 1) === 1 ? "" : "s"} into this match.
         </p>
+        {match.mismatchedFields?.length > 0 && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Differing fields: {match.mismatchedFields.map(humanize).join(", ")}
+          </p>
+        )}
       </header>
 
       {match.transactionIds?.length > 0 && (
@@ -123,11 +128,6 @@ function MatchDetail({ match, runId, onDecision }) {
           <ConfidenceIndicator confidence={match.confidence} />
         </div>
         <EvidenceList scoreBreakdown={match.scoreBreakdown} reasons={match.reasons} />
-        {match.mismatchedFields?.length > 0 && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Differing fields: {match.mismatchedFields.map(humanize).join(", ")}
-          </p>
-        )}
       </DrawerSection>
 
       <DrawerSection title="AI explanation">
@@ -219,7 +219,7 @@ function MatchSide({ index, transactionId, onClick }) {
       </div>
       {failed ? (
         <p className="px-3 pb-3 text-sm text-muted-foreground">
-          This record could not be loaded.
+          Record details unavailable.
         </p>
       ) : txn ? (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 px-3 pb-3">
@@ -230,7 +230,7 @@ function MatchSide({ index, transactionId, onClick }) {
           <DetailField label="Counterparty">{txn.counterparty || "—"}</DetailField>
           <DetailField label="Direction">{humanize(txn.direction)}</DetailField>
           <DetailField label="Reference" className="col-span-2">
-            <span className="font-mono text-xs">{txn.reference || "—"}</span>
+            <span className="text-xs">{txn.reference || "—"}</span>
           </DetailField>
           <DetailField label="Description" className="col-span-2">
             {txn.description || "—"}

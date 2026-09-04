@@ -131,9 +131,9 @@ function SourceCard({ source, expanded, onToggle }) {
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
             <span className="truncate font-medium text-foreground">{source.name}</span>
-            {source.status !== "ACTIVE" && (
-              <Badge variant="neutral">{humanize(source.status)}</Badge>
-            )}
+            <Badge variant={source.status === "ACTIVE" ? "success" : "neutral"}>
+              {humanize(source.status)}
+            </Badge>
           </span>
           <span className="mt-0.5 block truncate text-sm text-muted-foreground">
             {source.institution || sourceTypeLabel(source.type)} · {source.currency}

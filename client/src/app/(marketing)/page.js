@@ -12,8 +12,6 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { DashboardPreview } from "@/components/marketing/dashboard-preview";
 import { siteConfig } from "@/config/site";
 
 const steps = [
@@ -29,12 +27,12 @@ const steps = [
     step: "02",
     title: "Reconcile automatically",
     description:
-      "Transactions are matched across systems continuously, so balances are always explained and discrepancies surface immediately.",
+      "Transactions are matched across systems, so discrepancies surface immediately and balances are always explained.",
   },
   {
     icon: BrainCircuit,
     step: "03",
-    title: "Let AI investigate the rest",
+    title: "Investigate exceptions with AI",
     description:
       "When something doesn't match, LedgerLens investigates the exception, gathers evidence, and prepares it for a human decision.",
   },
@@ -43,7 +41,7 @@ const steps = [
 const features = [
   {
     icon: Layers,
-    title: "Unified normalization",
+    title: "Unified transaction records",
     description:
       "Every source is mapped to a single transaction schema, so comparisons are always apples-to-apples.",
   },
@@ -55,7 +53,7 @@ const features = [
   },
   {
     icon: BrainCircuit,
-    title: "AI investigation",
+    title: "AI-powered analysis",
     description:
       "Agents trace each exception through your data, propose a likely cause, and attach the evidence.",
   },
@@ -88,10 +86,6 @@ function Hero() {
       />
       <div className="mx-auto max-w-6xl px-4 pb-16 pt-16 sm:px-6 sm:pt-24">
         <div className="mx-auto max-w-3xl text-center">
-          <Badge variant="primary" className="mb-5 px-3 py-1 text-xs">
-            <BrainCircuit className="size-3" aria-hidden="true" />
-            AI-powered reconciliation for finance teams
-          </Badge>
           <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl sm:leading-[1.15]">
             Financial reconciliation,
             <br />
@@ -108,19 +102,12 @@ function Hero() {
             <Button
               size="lg"
               variant="outline"
-              render={<Link href="/#product" />}
+              render={<Link href="/#how-it-works" />}
               className="w-full sm:w-auto"
             >
-              View demo
+              How it works
             </Button>
           </div>
-          <p className="mt-4 text-xs text-muted-foreground">
-            Free during beta · No credit card required
-          </p>
-        </div>
-
-        <div id="product" className="mt-14 scroll-mt-20 sm:mt-20">
-          <DashboardPreview />
         </div>
       </div>
     </section>
@@ -194,14 +181,14 @@ function Features() {
 
 function FinalCta() {
   return (
-    <section id="pricing" className="scroll-mt-14">
+    <section className="scroll-mt-14">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
         <div className="rounded-2xl bg-navy px-6 py-14 text-center sm:px-12">
           <h2 className="mx-auto max-w-xl text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-            Stop chasing mismatches. Start closing faster.
+            Ready to reconcile your financial records?
           </h2>
           <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-slate-400 sm:text-base">
-            Set up your first workspace and see your reconciliation status in minutes.
+            Set up your workspace and see your reconciliation status in minutes.
           </p>
           <div className="mt-7 flex justify-center">
             <Button size="lg" render={<Link href="/signup" />}>

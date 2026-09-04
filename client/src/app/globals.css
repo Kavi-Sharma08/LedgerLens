@@ -145,6 +145,15 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  /* Robust text wrapping so long values (references, counterparties, IDs)
+     never force horizontal scroll inside constrained containers like the
+     AI chat panel or evidence cards. */
+  .overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
   body {
     @apply bg-background text-foreground antialiased;
   }

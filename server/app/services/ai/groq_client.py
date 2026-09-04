@@ -45,6 +45,7 @@ from typing import Any, Callable
 
 import httpx
 
+from .formatting import compile_evidence_answer
 from .provider import (
     AIError,
     AIProvider,
@@ -87,14 +88,6 @@ def _json_dumps(value: Any) -> str:
 
 def _arg_keys(args: dict):
     return (args and args.keys()) or []
-
-
-def _truncate(text: str, limit: int) -> str:
-    """Best-effort truncation of a tool result for safe fallback rendering."""
-    text = (text or "").strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "..."
 
 
 def _extract_error_message(response: httpx.Response) -> str:
@@ -645,7 +638,11 @@ class GroqProvider(AIProvider):
                     "LedgerLens. Do NOT call any tools or functions. "
                     "Produce the final structured JSON answer ONLY, grounded in "
                     "the evidence already present in this conversation. "
-                    "If evidence is incomplete, say so - never invent figures."
+                    "If evidence is incomplete, say so - never invent figures. "
+                    "Present amounts in INR (e.g. ₹1,000.00), dates like "
+                    "'18 Aug 2026', statuses as plain words (e.g. 'Needs review'), "
+                    "and never include raw database IDs, JSON, field names or "
+                    "tool output in any user-visible text."
                 ),
             }]
             synthesis_payload: dict[str, Any] = {
@@ -694,47 +691,30 @@ class GroqProvider(AIProvider):
         return self._evidence_fallback_turn(working)
 
     def _evidence_fallback_turn(self, working: list[dict]) -> dict:
-        """Auto-compile a guaranteed non-empty structured answer from the tool
-        evidence already collected, so the user always receives a real answer."""
-        tool_msgs = [m for m in working if m.get("role") == "tool"]
-        findings = []
-        for m in tool_msgs:
+        """Auto-compile a clean, human-readable structured answer from the tool
+        evidence already collected, so the user always receives a real answer.
+
+        The raw tool JSON is never surfaced: known fields are formatted through
+        the shared presentation helpers (amounts, dates, enums) and ObjectIds
+        are kept only on internal `entity_id` hints for UI navigation."""
+        tool_name_by_id: dict[str, str] = {}
+        for m in working:
+            if m.get("role") != "assistant":
+                continue
+            for call in (m.get("tool_calls") or []):
+                fn = call.get("function") or {}
+                tool_name_by_id[call.get("id", "")] = fn.get("name", "")
+
+        entries: list[tuple[str, dict | None]] = []
+        for m in working:
+            if m.get("role") != "tool":
+                continue
+            name = tool_name_by_id.get(m.get("tool_call_id", ""), "")
             try:
                 data = _json_loads(m.get("content") or "{}")
-                text = _json_dumps(data) if isinstance(data, (dict, list)) else str(data)
             except Exception:  # noqa: BLE001
-                text = str(m.get("content") or "")
-            findings.append({
-                "kind": "fact",
-                "text": _truncate(text, 600),
-                "detail": [],
-            })
+                data = None
+            entries.append((name, data if isinstance(data, dict) else None))
 
-        if findings:
-            summary = (
-                f"LedgerLens successfully retrieved {len(tool_msgs)} piece(s) of "
-                "reconciliation evidence for this question. The synthesis step was "
-                "interrupted, so this answer reflects the retrieved evidence directly."
-            )
-        else:
-            findings.append({
-                "kind": "fact",
-                "text": "Reconciliation data was retrieved for the active run.",
-                "detail": [],
-            })
-            summary = "LedgerLens retrieved reconciliation data for this workspace."
-
-        answer = {
-            "title": "Reconciliation evidence (LedgerLens)",
-            "summary": summary,
-            "findings": findings,
-            "evidence": [],
-            "likely_causes": [],
-            "recommendations": ["Review the retrieved reconciliation evidence for the active run."],
-            "confidence": "medium",
-            "limitations": [
-                "The AI synthesis step was interrupted; this answer reflects the "
-                "raw retrieved tool evidence.",
-            ],
-        }
+        answer = compile_evidence_answer(entries)
         return {"role": "assistant", "content": _json_dumps(answer)}

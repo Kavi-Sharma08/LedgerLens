@@ -176,11 +176,6 @@ export function AskLedgerLens() {
             <ScanSearch className="size-4" aria-hidden="true" />
           </span>
           <span className="font-semibold tracking-tight">Ask LedgerLens</span>
-          {aiContext.reconciliationRunId && (
-            <span className="ml-1 rounded border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-              Run {aiContext.reconciliationRunId.slice(-6)}
-            </span>
-          )}
         </button>
       )}
 
@@ -190,7 +185,7 @@ export function AskLedgerLens() {
           aria-label="Ask LedgerLens"
           role="dialog"
           aria-modal="false"
-          className="fixed bottom-0 right-0 z-50 flex h-[min(85vh,640px)] w-full max-w-md flex-col overflow-hidden border-t border-l border-border bg-background shadow-2xl sm:bottom-5 sm:right-5 sm:h-[580px] sm:rounded-xl sm:border"
+          className="fixed bottom-0 right-0 z-50 flex h-[min(85vh,640px)] w-full max-w-md min-w-0 flex-col overflow-hidden border-t border-l border-border bg-background shadow-2xl sm:bottom-5 sm:right-5 sm:h-[580px] sm:rounded-xl sm:border"
         >
           {/* Header */}
           <header className="flex flex-col border-b border-border bg-sidebar text-sidebar-foreground">
@@ -236,7 +231,7 @@ export function AskLedgerLens() {
           </header>
 
           {/* Conversation */}
-          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <div className="flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 min-w-0">
             {thread.length === 0 && !error && (
               <EmptyState suggestions={suggestions} canView={canView} onAsk={sendQuestion} busy={busy} />
             )}
@@ -357,27 +352,24 @@ function ContextBar({ aiContext }) {
 
   if (aiContext.transactionId) {
     return (
-      <div className="flex items-center justify-between gap-2 border-t border-border/60 px-4 py-2 text-xs">
+      <div className="flex items-center gap-2 border-t border-border/60 px-4 py-2 text-xs">
         <span className="font-medium text-muted-foreground">Transaction context</span>
-        <span className="font-mono text-foreground/80">{aiContext.transactionId.slice(-8)}</span>
       </div>
     );
   }
 
   if (aiContext.matchId) {
     return (
-      <div className="flex items-center justify-between gap-2 border-t border-border/60 px-4 py-2 text-xs">
+      <div className="flex items-center gap-2 border-t border-border/60 px-4 py-2 text-xs">
         <span className="font-medium text-muted-foreground">Match context</span>
-        <span className="font-mono text-foreground/80">{aiContext.matchId.slice(-8)}</span>
       </div>
     );
   }
 
   if (aiContext.exceptionId) {
     return (
-      <div className="flex items-center justify-between gap-2 border-t border-border/60 px-4 py-2 text-xs">
+      <div className="flex items-center gap-2 border-t border-border/60 px-4 py-2 text-xs">
         <span className="font-medium text-muted-foreground">Exception context</span>
-        <span className="font-mono text-foreground/80">{aiContext.exceptionId.slice(-8)}</span>
       </div>
     );
   }
@@ -385,12 +377,11 @@ function ContextBar({ aiContext }) {
   if (aiContext.reconciliationRunId) {
     return (
       <div className="space-y-1.5 border-t border-border/60 px-4 py-2">
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="font-medium text-muted-foreground">Active run context</span>
-          <span className="font-mono text-foreground/80">{aiContext.reconciliationRunId.slice(-10)}</span>
+        <div className="text-xs">
+          <span className="font-medium text-muted-foreground">Active reconciliation</span>
         </div>
         {summary && (
-          <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
             <span className="rounded bg-muted px-1.5 py-0.5 text-foreground/80">
               {formatCount(summary.totalTransactions ?? 0)} records
             </span>
@@ -463,7 +454,7 @@ function MessageRow({ message }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <p className="max-w-[85%] rounded-xl rounded-br-sm bg-foreground px-3.5 py-2.5 text-xs font-medium leading-relaxed text-background">
+        <p className="max-w-[85%] min-w-0 rounded-xl rounded-br-sm bg-foreground px-3.5 py-2.5 text-xs font-medium leading-relaxed text-background break-words overflow-wrap-anywhere">
           {message.text}
         </p>
       </div>
@@ -471,7 +462,7 @@ function MessageRow({ message }) {
   }
   return (
     <div className="flex justify-start">
-      <div className="w-full max-w-[95%] rounded-xl rounded-bl-sm border border-border bg-card p-3.5">
+      <div className="w-full max-w-[95%] min-w-0 rounded-xl rounded-bl-sm border border-border bg-card p-3.5">
         <AiAnswer
           data={message.data}
           emptyMessage="There isn't enough reconciliation evidence available to answer this."

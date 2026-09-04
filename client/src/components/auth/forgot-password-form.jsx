@@ -71,7 +71,7 @@ function ForgotPasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor="forgot-email">Email</Label>
         <Input
           id="forgot-email"
@@ -79,6 +79,7 @@ function ForgotPasswordForm() {
           type="email"
           autoComplete="email"
           placeholder="you@company.com"
+          className="h-11"
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
@@ -94,7 +95,7 @@ function ForgotPasswordForm() {
         )}
       </div>
 
-      <Button type="submit" className="w-full" disabled={submitting}>
+      <Button type="submit" className="h-11 w-full text-[15px]" disabled={submitting}>
         {submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
         {submitting ? "Sending..." : "Send reset instructions"}
       </Button>

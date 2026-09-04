@@ -12,6 +12,7 @@ from .normalization.money import money_to_str
 from ..schemas.reconciliation import (
     ExceptionPublic,
     MatchPublic,
+    NotePublic,
     RunPublic,
 )
 from ..schemas.source import SourcePublic
@@ -176,6 +177,20 @@ def to_match_public(match: Match) -> MatchPublic:
     )
 
 
+def to_note_public(note: dict) -> NotePublic:
+    """Map a persisted inline investigation note to its public payload.
+
+    Never exposes MongoDB internals or raw user id — the UI only ever sees
+    the note id, content and the creator's display name."""
+    return NotePublic(
+        id=str(note.get("id") or ""),
+        text=str(note.get("text") or ""),
+        createdAt=note.get("createdAt"),
+        updatedAt=note.get("updatedAt"),
+        createdBy=note.get("createdBy"),
+    )
+
+
 def to_exception_public(exc: ReconciliationException) -> ExceptionPublic:
     resolution = exc.resolution or None
     return ExceptionPublic(
@@ -187,4 +202,5 @@ def to_exception_public(exc: ReconciliationException) -> ExceptionPublic:
         status=exc.status.value,
         resolution=resolution,
         createdAt=exc.created_at.isoformat() if exc.created_at else None,
+        notes=[to_note_public(n) for n in (exc.notes or [])],
     )

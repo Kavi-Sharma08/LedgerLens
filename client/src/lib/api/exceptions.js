@@ -36,3 +36,18 @@ export function addExceptionNote(exceptionId, text, { signal } = {}) {
     { signal }
   );
 }
+
+export function updateExceptionNote(exceptionId, noteId, text, { signal } = {}) {
+  return api.patch(
+    `/api/exceptions/${encodeURIComponent(exceptionId)}/notes/${encodeURIComponent(noteId)}`,
+    { text },
+    { signal }
+  );
+}
+
+export function deleteExceptionNote(exceptionId, noteId, { signal } = {}) {
+  return api.delete(
+    `/api/exceptions/${encodeURIComponent(exceptionId)}/notes/${encodeURIComponent(noteId)}`,
+    { signal }
+  );
+}

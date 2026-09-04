@@ -23,7 +23,7 @@ export default function LoginPage() {
   return (
     <AuthShell
       title="Welcome back"
-      subtitle="Sign in to your workspace to see your reconciliation status."
+      subtitle="Sign in to your workspace to continue."
       footer={
         <>
           New to LedgerLens?{" "}
@@ -35,6 +35,15 @@ export default function LoginPage() {
           </Link>
         </>
       }
+      panel={{
+        headline: "Reconcile. Investigate. Resolve.",
+        text: "Bring your financial records together and review reconciliation exceptions with clear evidence.",
+        points: [
+          "Automated reconciliation",
+          "Exception investigation",
+          "Human review",
+        ],
+      }}
     >
       <Suspense fallback={<LoginFallback />}>
         <LoginForm />

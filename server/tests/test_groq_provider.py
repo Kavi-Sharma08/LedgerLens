@@ -540,10 +540,14 @@ def test_ask_never_fails_with_ai_unavailable_when_synthesis_hits_429(monkeypatch
 
     assert r.status_code == 200, r.text
     body = r.json()
-    # A real, non-empty structured answer was compiled from the collected evidence.
-    assert body["title"] == "Reconciliation evidence (LedgerLens)"
+    # A real, non-empty structured answer was compiled from the collected evidence,
+    # presented in plain human terms (no raw IDs / JSON, no internal wording).
+    assert body["title"] == "Reconciliation outcome: 1 matched, 1 unmatched, 1 exception"
     assert body["summary"]
     assert body["findings"]
     # It must NOT be one of the forbidden terminal states.
     assert body["title"] not in {"AI unavailable", "Analysis unavailable"}
     assert "could not complete" not in body["summary"].lower()
+    # No raw field names / JSON / internal synthesis wording leaks into the answer.
+    assert "tool" not in body["summary"].lower()
+    assert "LedgerLens successfully retrieved" not in body["summary"]

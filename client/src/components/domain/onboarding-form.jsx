@@ -79,7 +79,7 @@ export function OnboardingForm() {
             <Label htmlFor="workspace-name">Workspace name</Label>
             <Input
               id="workspace-name"
-              placeholder="Acme Inc."
+              placeholder="e.g. Acme Corp"
               value={name}
               onChange={(e) => {
                 setName(e.target.value);

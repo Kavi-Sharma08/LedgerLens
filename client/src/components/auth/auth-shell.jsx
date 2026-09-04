@@ -1,85 +1,98 @@
 import Link from "next/link";
 
-import { Check } from "lucide-react";
-
 import { Logo, LogoMark } from "@/components/common/logo";
 import { Button } from "@/components/ui/button";
 
-const highlights = [
-  "Reconcile every ledger automatically",
-  "AI investigates the exceptions that matter",
-  "Full audit trail, ready for review",
-];
-
 /**
- * Shared layout for all authentication screens (login, signup, forgot password).
- * Two-pane layout: focused form on the left, quiet product narrative on the right.
+ * Shared layout for the signed-out authentication screens (login, signup,
+ * forgot password). Provides a refined layout: a centered auth form column
+ * with a compact product-context card that sits beside it on large screens
+ * and stacks below it on smaller ones.
+ *
+ * The supporting card is intentionally small — it supports the form rather
+ * than dominating the screen.
  */
-function AuthShell({ title, subtitle, footer, children }) {
+function AuthShell({
+  title,
+  subtitle,
+  footer,
+  children,
+  panel,
+}) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-[minmax(0,34rem)_1fr]">
-      <div className="flex flex-col px-6 py-6 sm:px-10 lg:px-14">
-        <header className="flex items-center justify-between">
-          <Logo />
-          <Button variant="ghost" size="sm" render={<Link href="/" />}>
-            Back to site
-          </Button>
-        </header>
+    <div className="flex min-h-screen flex-col bg-background">
+      {/* Header */}
+      <header className="flex items-center justify-between gap-4 border-b border-border/80 px-5 py-4 sm:px-10">
+        <Logo />
+        <Button variant="ghost" size="sm" render={<Link href="/" />}>
+          Back to site
+        </Button>
+      </header>
 
-        <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-12">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-          {subtitle && (
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{subtitle}</p>
+      {/* Body */}
+      <div className="flex flex-1 items-center justify-center px-5 py-10 sm:px-10">
+        <div className="grid w-full max-w-3xl items-center gap-10 lg:grid-cols-[minmax(0,26rem)_minmax(0,19rem)] lg:justify-between lg:gap-16">
+          {/* Form column */}
+          <main className="mx-auto w-full max-w-md lg:mx-0">
+            <h1 className="text-[26px] font-semibold tracking-tight text-foreground sm:text-[28px]">
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
+                {subtitle}
+              </p>
+            )}
+            <div className="mt-8">{children}</div>
+            {footer && (
+              <p className="mt-8 text-sm text-muted-foreground">{footer}</p>
+            )}
+          </main>
+
+          {/* Supporting panel */}
+          {panel && (
+            <aside className="mx-auto w-full max-w-md lg:mx-0" aria-label="About LedgerLens">
+              <div className="relative overflow-hidden rounded-2xl border border-border bg-navy p-6">
+                <LogoMark className="size-8 text-white/90" />
+                <p className="mt-5 text-lg font-semibold tracking-tight text-white">
+                  {panel.headline}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                  {panel.text}
+                </p>
+                <ul className="mt-6 space-y-2.5 border-t border-white/10 pt-5">
+                  {panel.points.map((point) => (
+                    <li
+                      key={point}
+                      className="flex items-center gap-2.5 text-sm text-slate-300"
+                    >
+                      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/25">
+                        <svg
+                          className="size-3 text-indigo-300"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </span>
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </aside>
           )}
-          <div className="mt-8">{children}</div>
-          {footer && <div className="mt-8 text-sm text-muted-foreground">{footer}</div>}
-        </main>
-
-        <footer className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} LedgerLens, Inc.
-        </footer>
+        </div>
       </div>
 
-      <aside className="relative hidden overflow-hidden bg-navy lg:flex lg:flex-col lg:justify-between lg:p-14">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(60rem_40rem_at_120%_-10%,rgba(79,70,229,0.35),transparent_60%)]"
-        />
-        <LogoMark className="size-9 text-white/90" />
-
-        <div className="relative space-y-8">
-          <blockquote className="max-w-md text-xl leading-relaxed font-medium tracking-tight text-slate-200">
-            &ldquo;Our close went from five days of spreadsheet archaeology to an afternoon of
-            reviewing exceptions.&rdquo;
-          </blockquote>
-          <figcaption className="flex items-center gap-3 text-sm">
-            <span
-              aria-hidden="true"
-              className="flex size-8 items-center justify-center rounded-full bg-primary/30 text-xs font-semibold text-white"
-            >
-              MK
-            </span>
-            <span className="text-slate-400">
-              Maya K., Controller at Northwind Systems
-            </span>
-          </figcaption>
-
-          <ul className="space-y-3 border-t border-white/10 pt-6">
-            {highlights.map((item) => (
-              <li key={item} className="flex items-center gap-3 text-sm text-slate-300">
-                <span className="flex size-5 items-center justify-center rounded-full bg-primary/25">
-                  <Check className="size-3 text-indigo-300" aria-hidden="true" />
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="relative text-xs text-slate-500">
-          SOC 2 controls · Encryption at rest · Human-in-the-loop AI
-        </p>
-      </aside>
+      {/* Footer */}
+      <footer className="border-t border-border/60 px-5 py-4 text-center text-xs text-muted-foreground sm:px-10">
+        &copy; {new Date().getFullYear()} LedgerLens, Inc.
+      </footer>
     </div>
   );
 }

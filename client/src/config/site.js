@@ -2,7 +2,7 @@ export const siteConfig = {
   name: "LedgerLens",
   tagline: "Financial reconciliation, without the manual investigation.",
   description:
-    "LedgerLens automatically reconciles financial records and uses AI to investigate the exceptions that matter.",
+    "LedgerLens reconciles financial records and helps teams investigate exceptions with AI.",
   appUrl: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
 };
 
@@ -13,7 +13,6 @@ export const apiConfig = {
 export const marketingNav = [
   { title: "How it works", href: "/#how-it-works" },
   { title: "Features", href: "/#features" },
-  { title: "Pricing", href: "/#pricing" },
 ];
 
 export const dashboardNav = [

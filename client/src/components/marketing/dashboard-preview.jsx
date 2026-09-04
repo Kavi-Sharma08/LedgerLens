@@ -1,29 +1,24 @@
-import { Badge } from "@/components/ui/badge";
 import { LogoMark } from "@/components/common/logo";
 
 const stats = [
-  { label: "Transactions", value: "12,847" },
-  { label: "Matched", value: "94.2%" },
-  { label: "Needs review", value: "312" },
-  { label: "Unresolved", value: "48" },
+  { label: "Transactions", value: "146" },
+  { label: "Matched", value: "94%" },
+  { label: "Needs review", value: "6" },
+  { label: "Exceptions", value: "4" },
 ];
 
 const chartBars = [42, 58, 45, 66, 52, 74, 61, 83, 69, 91, 78, 96];
 
 const exceptions = [
-  { title: "Amount mismatch · $1,240.00", meta: "Stripe payout vs bank ledger", tone: "warning" },
-  { title: "Missing entry · $86.40", meta: "Wire fee not recorded in ERP", tone: "destructive" },
-  { title: "Duplicate candidate · $412.10", meta: "Two invoices flagged as identical", tone: "info" },
+  { title: "Amount mismatch", meta: "NEFT credit vs bank ledger", tone: "warning" },
+  { title: "Missing entry", meta: "Fee not recorded in ERP", tone: "destructive" },
+  { title: "Duplicate candidate", meta: "Two invoices flagged", tone: "info" },
 ];
 
 function PreviewRow({ className }) {
   return <div className={className} aria-hidden="true" />;
 }
 
-/**
- * Static, hand-built preview of the LedgerLens dashboard used on the landing page.
- * Intentionally non-interactive; represents the real product shell.
- */
 function DashboardPreview() {
   return (
     <div
@@ -75,14 +70,11 @@ function DashboardPreview() {
         <div className="min-w-0 flex-1 space-y-4 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-foreground">Good morning, Alex</p>
+              <p className="text-sm font-semibold text-foreground">Overview</p>
               <p className="text-[11px] text-muted-foreground">
-                Here&rsquo;s what&rsquo;s happening with your financial data.
+                Monitor your records, reconciliations, and exceptions.
               </p>
             </div>
-            <Badge variant="primary" className="gap-1 text-[10px]">
-              AI investigating 3
-            </Badge>
           </div>
 
           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
@@ -121,9 +113,6 @@ function DashboardPreview() {
                     <p className="truncate text-[11px] font-medium text-foreground">{item.title}</p>
                     <p className="truncate text-[10px] text-muted-foreground">{item.meta}</p>
                   </div>
-                  <Badge variant={item.tone} className="shrink-0 text-[9px] uppercase">
-                    open
-                  </Badge>
                 </li>
               ))}
             </ul>

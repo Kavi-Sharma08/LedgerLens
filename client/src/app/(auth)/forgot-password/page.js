@@ -21,6 +21,15 @@ export default function ForgotPasswordPage() {
           </Link>
         </>
       }
+      panel={{
+        headline: "Reconcile. Investigate. Resolve.",
+        text: "Bring your financial records together and review reconciliation exceptions with clear evidence.",
+        points: [
+          "Automated reconciliation",
+          "Exception investigation",
+          "Human review",
+        ],
+      }}
     >
       <ForgotPasswordForm />
     </AuthShell>

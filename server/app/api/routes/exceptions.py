@@ -5,16 +5,18 @@ not per reconciliation run. Run-scoped listings remain available under
 /api/reconciliations/{run_id}/exceptions."""
 from fastapi import APIRouter, Depends, Query
 
-from ...api.deps import get_current_membership, get_current_workspace, require_permission
+from ...api.deps import get_current_user, get_current_workspace, require_permission
 from ...core.database import get_database
 from ...core.errors import AppError, NotFoundError
 from ...models.enums import ExceptionStatus
+from ...models.user import User
 from ...models.workspace import Workspace
 from ...repositories import exception_repository
 from ...repositories.common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, InvalidCursorError
 from ...schemas.common import paginated
+from ...schemas.reconciliation import NotePublic
 from ...services.audit_helper import log_audit
-from ...services.mappers import to_exception_public
+from ...services.mappers import to_exception_public, to_note_public
 
 router = APIRouter()
 
@@ -138,11 +140,15 @@ async def update_exception_status(
 async def add_exception_note(
     exception_id: str,
     body: dict,
-    membership=Depends(require_permission("manage_exceptions")),
+    current_user: User = Depends(get_current_user),
     workspace: Workspace = Depends(get_current_workspace),
+    _=Depends(require_permission("view_data")),
     db=Depends(get_database),
 ):
-    """Add an investigation note to an exception."""
+    """Add an investigation note to an exception.
+
+    Any active member who can view the workspace's data may add notes; the
+    exception must belong to the authenticated workspace."""
     from bson import ObjectId
 
     try:
@@ -153,21 +159,104 @@ async def add_exception_note(
     text = body.get("text", "").strip()
     if not text:
         raise AppError(status_code=422, message="Note text is required.")
+    if len(text) > 2000:
+        raise AppError(status_code=422, message="Note is too long. Keep it under 2000 characters.")
 
-    result = await exception_repository.add_note(
-        db, workspace.id, _id, membership.user_id, text
+    note = await exception_repository.add_note(
+        db, workspace.id, _id, current_user.id, text, created_by=current_user.name
     )
-    if result is None:
+    if note is None:
         raise NotFoundError(message="Exception not found.")
 
     await log_audit(
         db,
         workspace_id=workspace.id,
-        user_id=membership.user_id,
+        user_id=current_user.id,
         action="exception_note_added",
         entity_type="exception",
         entity_id=exception_id,
-        details={"notePreview": text[:200]},
+        details={"noteId": note["id"], "notePreview": text[:200]},
     )
 
-    return to_exception_public(result)
+    return to_note_public(note)
+
+
+@router.patch("/{exception_id}/notes/{note_id}")
+async def update_exception_note(
+    exception_id: str,
+    note_id: str,
+    body: dict,
+    current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
+    _=Depends(require_permission("view_data")),
+    db=Depends(get_database),
+):
+    """Edit an investigation note's content."""
+    from bson import ObjectId
+
+    try:
+        _id = ObjectId(exception_id)
+    except Exception:
+        raise AppError(status_code=404, message="Exception not found.")
+
+    if not note_id:
+        raise AppError(status_code=404, message="Note not found.")
+
+    text = body.get("text", "").strip()
+    if not text:
+        raise AppError(status_code=422, message="Note text is required.")
+    if len(text) > 2000:
+        raise AppError(status_code=422, message="Note is too long. Keep it under 2000 characters.")
+
+    note = await exception_repository.update_note(db, workspace.id, _id, note_id, text)
+    if note is None:
+        raise NotFoundError(message="Note not found.")
+
+    await log_audit(
+        db,
+        workspace_id=workspace.id,
+        user_id=current_user.id,
+        action="exception_note_updated",
+        entity_type="exception",
+        entity_id=exception_id,
+        details={"noteId": note_id},
+    )
+
+    return to_note_public(note)
+
+
+@router.delete("/{exception_id}/notes/{note_id}")
+async def delete_exception_note(
+    exception_id: str,
+    note_id: str,
+    current_user: User = Depends(get_current_user),
+    workspace: Workspace = Depends(get_current_workspace),
+    _=Depends(require_permission("view_data")),
+    db=Depends(get_database),
+):
+    """Delete an investigation note from an exception."""
+    from bson import ObjectId
+
+    try:
+        _id = ObjectId(exception_id)
+    except Exception:
+        raise AppError(status_code=404, message="Exception not found.")
+
+    if not note_id:
+        raise AppError(status_code=404, message="Note not found.")
+
+    note = await exception_repository.delete_note(db, workspace.id, _id, note_id)
+    if note is None:
+        raise NotFoundError(message="Note not found.")
+
+    await log_audit(
+        db,
+        workspace_id=workspace.id,
+        user_id=current_user.id,
+        action="exception_note_deleted",
+        entity_type="exception",
+        entity_id=exception_id,
+        details={"noteId": note_id},
+    )
+
+    return {"id": note_id}

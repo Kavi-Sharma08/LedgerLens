@@ -271,6 +271,9 @@ class FakeCollection:
                     current = matched.setdefault(field, [])
                     if value not in current:
                         current.append(copy.deepcopy(value))
+            if "$push" in update:
+                for field, value in update["$push"].items():
+                    matched.setdefault(field, []).append(copy.deepcopy(value))
             self.database.store[self.name][index] = matched
             return copy.deepcopy(matched)
         return copy.deepcopy(matched)  # ReturnDocument.BEFORE

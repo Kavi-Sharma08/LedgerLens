@@ -85,17 +85,17 @@ export function ReconciliationDetail({ runId }) {
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight text-foreground">
-            Run <span className="font-mono text-lg">{shortId(run.id)}</span>
-            <StatusBadge kind="run" value={run.status} />
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            Reconciliation run
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {formatDateTime(run.startedAt)}
-            {run.completedAt ? ` — completed ${formatDateTime(run.completedAt)}` : ""}
+            {formatDateTime(run.startedAt, { year: true })}
+            {run.completedAt ? ` · Completed` : ""}
             {" · "}
-            {run.sourceIds.length} sources · engine v{run.algorithmVersion}
+            {run.sourceIds.length} sources
           </p>
         </div>
+        <StatusBadge kind="run" value={run.status} />
       </header>
 
       <nav aria-label="Breadcrumb" className="text-sm">
@@ -216,11 +216,11 @@ function OverviewPanel({ run, onJump }) {
       </div>
 
       <dl className="grid gap-x-8 gap-y-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2">
-        <DetailField label="Scope start">{run.dateFrom || "All time"}</DetailField>
-        <DetailField label="Scope end">{run.dateTo || "All time"}</DetailField>
-        <DetailField label="Engine version">{run.algorithmVersion || "—"}</DetailField>
+        <DetailField label="Date range">
+          {run.dateFrom || "All time"}{run.dateTo ? ` – ${run.dateTo}` : ""}
+        </DetailField>
         <DetailField label="Sources in scope">
-          <span className="font-mono text-xs">{run.sourceIds.length} selected</span>
+          {run.sourceIds.length} selected
         </DetailField>
       </dl>
 
@@ -708,7 +708,7 @@ const EXCEPTION_COLUMNS = [
   },
   {
     key: "status",
-    header: "State",
+    header: "Status",
     render: (row) => <StatusBadge kind="exception" value={row.status} />,
   },
   {
@@ -734,8 +734,4 @@ function DetailSkeleton() {
       <Skeleton className="h-80 w-full rounded-xl" />
     </div>
   );
-}
-
-function shortId(id) {
-  return String(id).slice(-8).toUpperCase();
 }

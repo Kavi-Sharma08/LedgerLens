@@ -18,11 +18,7 @@ import { listExceptions } from "@/lib/api/exceptions";
 import { formatCount, formatDateTime, formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-/**
- * Workspace overview. Every number comes from the backend's overview summary
- * and the latest run/exception feeds — nothing here is computed in the UI.
- */
-export function OverviewView({ greeting }) {
+export function OverviewView() {
   const { can } = useDashboard();
   const canViewData = Boolean(can.viewData);
   const [summary, setSummary] = useState(null);
@@ -66,35 +62,35 @@ export function OverviewView({ greeting }) {
 
   if (!canViewData) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <>
         <header>
           <h1 className="text-[28px] font-semibold tracking-tight text-foreground sm:text-[32px]">
-            {greeting}
+            Overview
           </h1>
           <p className="mt-1 text-sm text-muted-foreground sm:text-[15px]">
-            Welcome to your workspace.
+            Monitor your records, reconciliations, and exceptions.
           </p>
         </header>
         <AccessRestricted />
-      </div>
+      </>
     );
   }
 
-  if (loading) return <OverviewSkeleton greeting={greeting} />;
+  if (loading) return <OverviewSkeleton />;
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <>
         <header>
           <h1 className="text-[28px] font-semibold tracking-tight text-foreground sm:text-[32px]">
-            {greeting}
+            Overview
           </h1>
         </header>
         <ErrorState
           title="Unable to load overview"
           message={error}
         />
-      </div>
+      </>
     );
   }
 
@@ -106,10 +102,10 @@ export function OverviewView({ greeting }) {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[28px] font-semibold tracking-tight text-foreground sm:text-[32px]">
-            {greeting}
+            Overview
           </h1>
           <p className="mt-1 text-sm text-muted-foreground sm:text-[15px]">
-            Here&rsquo;s what is happening with your financial data.
+            Monitor your records, reconciliations, and exceptions.
           </p>
         </div>
         {latestRun && (
@@ -136,7 +132,6 @@ export function OverviewView({ greeting }) {
               value={formatCount(summary.totalTransactions)}
               icon={ArrowLeftRight}
               iconClass="bg-primary/10 text-primary"
-              hint="Normalized across all sources"
             />
             <KpiCard
               label="Connected sources"
@@ -188,10 +183,10 @@ export function OverviewView({ greeting }) {
                         >
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-medium text-foreground">
-                              Run · {run.sourceIds.length} sources
+                              Reconciliation run
                             </span>
                             <span className="block text-xs text-muted-foreground">
-                              {formatDateTime(run.startedAt)}
+                              {formatDateTime(run.startedAt)} &middot; {run.sourceIds.length} sources
                             </span>
                           </span>
                           <span className="hidden items-center gap-3 text-xs tabular-nums sm:flex">
@@ -260,7 +255,7 @@ export function OverviewView({ greeting }) {
   );
 }
 
-function KpiCard({ label, value, icon: Icon, iconClass, hint, action }) {
+function KpiCard({ label, value, icon: Icon, iconClass, action }) {
   return (
     <Card className="gap-0 p-5">
       <div className="flex items-start justify-between gap-2">
@@ -275,19 +270,19 @@ function KpiCard({ label, value, icon: Icon, iconClass, hint, action }) {
         </span>
       </div>
       <p className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        {hint}
+        <span />
         {action}
       </p>
     </Card>
   );
 }
 
-function OverviewSkeleton({ greeting }) {
+function OverviewSkeleton() {
   return (
     <div className="space-y-6" aria-busy="true" aria-label="Loading overview">
       <header>
         <h1 className="text-[28px] font-semibold tracking-tight text-foreground sm:text-[32px]">
-          {greeting}
+          Overview
         </h1>
       </header>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

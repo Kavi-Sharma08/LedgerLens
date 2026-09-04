@@ -351,3 +351,116 @@ def test_workspace_exceptions_feed_and_overview_summary(client):
     assert overview["openExceptions"] == len(feed["items"])
     assert overview["latestRun"]["status"] == "COMPLETED"
     assert overview["latestRun"]["totalTransactions"] == 7
+
+
+def test_investigation_notes_persist_and_surface_via_list(client):
+    """Notes must be fully CRUD: persisted to the exception, editable/deletable,
+    and returned by the workspace feed list endpoint (so the drawer still shows
+    them on reopen/refresh)."""
+    bank = _create_source(client, "Notes Bank", "BANK")
+    gateway = _create_source(client, "Notes Gateway", "PAYMENT_PROCESSOR")
+    for source in (bank, gateway):
+        client.post(
+            f"/api/files/upload?sourceId={source['id']}&fileName={source['name']}.csv"
+            f"&mimeType=text/csv",
+            content=csv_content(gateway_only_row=source is gateway),
+        )
+    client.post("/api/reconciliations", json={"sourceIds": [bank["id"], gateway["id"]]})
+
+    exc = client.get("/api/exceptions").json()["items"][0]
+    exc_id = exc["id"]
+
+    # A freshly listed exception starts with no notes.
+    assert exc.get("notes") == []
+
+    # Empty / whitespace-only notes must not be created (422).
+    for bad in ("", "   "):
+        resp = client.post(f"/api/exceptions/{exc_id}/notes", json={"text": bad})
+        assert resp.status_code == 422, resp.text
+
+    # CREATE: returns the created note object (not the full exception).
+    added = client.post(
+        f"/api/exceptions/{exc_id}/notes",
+        json={"text": "Checked the source ledger."},
+    )
+    assert added.status_code == 200, added.text
+    first = added.json()
+    assert set(first) == {"id", "text", "createdAt", "updatedAt", "createdBy"}
+    assert first["text"] == "Checked the source ledger."
+    assert first["createdBy"]  # display name populated from the user
+    assert not first["updatedAt"]  # created notes have no updated timestamp
+
+    added_2 = client.post(
+        f"/api/exceptions/{exc_id}/notes",
+        json={"text": "Waiting for confirmation from the payment system."},
+    )
+    assert added_2.status_code == 200, added_2.text
+    second = added_2.json()
+    assert second["id"] != first["id"]
+
+    # The workspace feed (what the drawer renders after a reopen/refresh) must
+    # include the persisted notes, in chronological order, with ids.
+    feed = client.get("/api/exceptions").json()
+    listed = next(item for item in feed["items"] if item["id"] == exc_id)
+    notes = listed["notes"]
+    assert [n["text"] for n in notes] == [
+        "Checked the source ledger.",
+        "Waiting for confirmation from the payment system.",
+    ]
+    assert all(n["id"] for n in notes)
+
+    # UPDATE: edits only the addressed note, sets an updatedAt timestamp.
+    patched = client.patch(
+        f"/api/exceptions/{exc_id}/notes/{second['id']}",
+        json={"text": "Waiting - confirmed by the bank."},
+    )
+    assert patched.status_code == 200, patched.text
+    patched_body = patched.json()
+    assert patched_body["id"] == second["id"]
+    assert patched_body["text"] == "Waiting - confirmed by the bank."
+    assert patched_body["updatedAt"]
+
+    feed = client.get("/api/exceptions").json()
+    listed = next(item for item in feed["items"] if item["id"] == exc_id)
+    texts = [n["text"] for n in listed["notes"]]
+    assert texts == ["Checked the source ledger.", "Waiting - confirmed by the bank."]
+    # The unedited note must be untouched (no updatedAt added to it).
+    notes_by_text = {n["text"]: n for n in listed["notes"]}
+    assert not notes_by_text["Checked the source ledger."]["updatedAt"]
+
+    # Editing a non-existent note must 404.
+    assert (
+        client.patch(
+            f"/api/exceptions/{exc_id}/notes/{ObjectId()}", json={"text": "nope"}
+        ).status_code
+        == 404
+    )
+
+    # UPDATE validation: empty/whitespace rejected.
+    assert (
+        client.patch(
+            f"/api/exceptions/{exc_id}/notes/{second['id']}", json={"text": "  "}
+        ).status_code
+        == 422
+    )
+
+    # DELETE: removes exactly the addressed note.
+    deleted = client.delete(f"/api/exceptions/{exc_id}/notes/{first['id']}")
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["id"] == first["id"]
+
+    feed = client.get("/api/exceptions").json()
+    listed = next(item for item in feed["items"] if item["id"] == exc_id)
+    texts = [n["text"] for n in listed["notes"]]
+    assert texts == ["Waiting - confirmed by the bank."]
+
+    # Deleting a non-existent note must 404.
+    assert (
+        client.delete(f"/api/exceptions/{exc_id}/notes/{first['id']}").status_code == 404
+    )
+
+    # Sending a note to a foreign/unknown exception must not silently succeed.
+    foreign = client.post(
+        f"/api/exceptions/{ObjectId()}/notes", json={"text": "nope"}
+    )
+    assert foreign.status_code == 404

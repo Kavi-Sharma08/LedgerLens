@@ -181,17 +181,8 @@ const EXCEPTION_COLUMNS = [
   },
   {
     key: "status",
-    header: "State",
+    header: "Status",
     render: (row) => <StatusBadge kind="exception" value={row.status} />,
-  },
-  {
-    key: "assignedTo",
-    header: "Assigned",
-    render: (row) => (
-      <span className="font-mono text-xs text-muted-foreground">
-        {row.assignedTo ? row.assignedTo.slice(-6) : "—"}
-      </span>
-    ),
   },
   {
     key: "createdAt",

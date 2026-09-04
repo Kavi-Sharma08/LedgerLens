@@ -51,6 +51,14 @@ class MatchPublic(BaseModel):
     createdAt: str | None = None
 
 
+class NotePublic(BaseModel):
+    id: str
+    text: str
+    createdAt: str | None = None
+    updatedAt: str | None = None
+    createdBy: str | None = None
+
+
 class ExceptionPublic(BaseModel):
     id: str
     reconciliationRunId: str
@@ -60,3 +68,4 @@ class ExceptionPublic(BaseModel):
     status: str
     resolution: dict | None = None
     createdAt: str | None = None
+    notes: list[NotePublic] = []

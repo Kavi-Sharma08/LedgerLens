@@ -102,8 +102,8 @@ function LoginForm() {
       />
       <FormDivider label="or continue with email" />
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <div className="space-y-2">
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
+        <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
@@ -111,6 +111,7 @@ function LoginForm() {
             type="email"
             autoComplete="email"
             placeholder="you@company.com"
+            className="h-11"
             value={values.email}
             onChange={(e) => setField("email", e.target.value)}
             aria-invalid={Boolean(fieldErrors.email)}
@@ -119,12 +120,12 @@ function LoginForm() {
           <FieldError id="email-error" message={fieldErrors.email} />
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">Password</Label>
             <Link
               href="/forgot-password"
-              className="rounded-sm text-xs font-medium text-primary underline-offset-4 hover:underline outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="rounded-sm text-xs font-medium text-muted-foreground underline-offset-4 hover:text-primary hover:underline outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               Forgot password?
             </Link>
@@ -133,6 +134,7 @@ function LoginForm() {
             name="password"
             autoComplete="current-password"
             placeholder="Enter your password"
+            className="h-11"
             value={values.password}
             onChange={(e) => setField("password", e.target.value)}
             aria-invalid={Boolean(fieldErrors.password)}
@@ -150,7 +152,11 @@ function LoginForm() {
           </div>
         )}
 
-        <Button type="submit" className="w-full" disabled={submitting}>
+        <Button
+          type="submit"
+          className="h-11 w-full text-[15px]"
+          disabled={submitting}
+        >
           {submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
           {submitting ? "Signing in…" : "Sign in"}
         </Button>

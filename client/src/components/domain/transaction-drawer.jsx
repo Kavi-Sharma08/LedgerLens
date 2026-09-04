@@ -135,7 +135,7 @@ export function TransactionDetail({ transactionId, loaded, error, context }) {
           <DetailField label="Posted">{formatDate(transaction.postedDate)}</DetailField>
         )}
         <DetailField label="Reference" className="col-span-2">
-          <span className="font-mono text-[13px] break-all">{transaction.reference || "—"}</span>
+          <span className="text-[13px]">{transaction.reference || "—"}</span>
         </DetailField>
         <DetailField label="Description" className="col-span-2">
           {transaction.description || "—"}
@@ -148,20 +148,12 @@ export function TransactionDetail({ transactionId, loaded, error, context }) {
               {source.accountIdentifier ? ` (${source.accountIdentifier})` : ""}
             </span>
           ) : (
-            <span className="font-mono text-[13px]">{transaction.sourceId}</span>
+            <span className="text-[13px]">—</span>
           )}
         </DetailField>
-        <DetailField label="Transaction ID" className="col-span-2">
-          <span className="font-mono text-[13px] break-all">{transaction.id}</span>
-        </DetailField>
         <DetailField label="Account" className="col-span-2">
-          <span className="font-mono text-[13px]">{transaction.accountIdentifier || "—"}</span>
+          <span>{transaction.accountIdentifier || "—"}</span>
         </DetailField>
-        {transaction.rawTransactionId && (
-          <DetailField label="Raw record" className="col-span-2">
-            <span className="font-mono text-[13px] break-all">{transaction.rawTransactionId}</span>
-          </DetailField>
-        )}
         <DetailField label="Imported">{formatDateTime(transaction.createdAt)}</DetailField>
       </dl>
 
@@ -230,30 +222,13 @@ export function TransactionDetail({ transactionId, loaded, error, context }) {
 function UnmatchedNotice({ run, transaction }) {
   return (
     <div className="space-y-3">
-      {run && (
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border bg-card px-3 py-3">
-          <DetailField label="Run">
-            <span className="font-mono text-xs">{run.id}</span>
-          </DetailField>
-          <DetailField label="Run status">{humanize(run.status)}</DetailField>
-          <DetailField label="Scope">
-            {run.dateFrom || "All time"} → {run.dateTo || "All time"}
-          </DetailField>
-          <DetailField label="Sources">{run.sourceIds?.length ?? 0} in scope</DetailField>
-        </dl>
-      )}
       <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-4">
         <StatusBadge kind="reconciliation" value="UNMATCHED" />
         <p className="mt-2.5 text-sm font-medium text-foreground">
-          No corresponding transaction was found in the other source(s) for this record.
+          No corresponding transaction was found.
         </p>
         <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-          The engine did not produce a match for {transaction.reference
-            ? <>reference <span className="font-mono">{transaction.reference}</span></>
-            : "this record"} within this run&rsquo;s scope — either no counterpart exists in the
-          other source(s), or potential candidates existed but none satisfied the matching
-          criteria. This is a valid reconciliation outcome; review it here or add more data and
-          run a new reconciliation.
+          No matching record was found in the other source(s) for this transaction.
         </p>
       </div>
     </div>

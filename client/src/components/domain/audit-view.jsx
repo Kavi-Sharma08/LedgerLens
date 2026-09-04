@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { listAuditLogs } from "@/lib/api/audit";
 import { formatDateTime } from "@/lib/format";
+import { humanize } from "@/components/domain/status-badge";
 
 const ALL = "ALL";
 
@@ -53,14 +54,13 @@ function formatAction(action) {
 
 function formatEntity(entityType, entityId, details) {
   if (!entityType) return "—";
-  const shortId = entityId ? String(entityId).slice(-8).toUpperCase() : "";
   if (entityType === "match" && details?.action) {
-    return `${formatAction(details.action)} on match ${shortId}`;
+    return formatAction(details.action);
   }
   if (entityType === "exception" && details?.newStatus) {
-    return `${entityType} ${shortId} → ${details.newStatus}`;
+    return `Exception → ${details.newStatus}`;
   }
-  return `${entityType} ${shortId}`;
+  return humanize(entityType);
 }
 
 export function AuditView() {
@@ -205,8 +205,8 @@ const AUDIT_COLUMNS = [
     key: "userId",
     header: "User",
     render: (row) => (
-      <span className="font-mono text-xs text-muted-foreground">
-        {row.userId ? row.userId.slice(-8).toUpperCase() : "—"}
+      <span className="text-xs text-muted-foreground">
+        {row.userId ? "Team member" : "—"}
       </span>
     ),
   },

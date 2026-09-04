@@ -9,22 +9,13 @@ const footerNav = [
     links: [
       { label: "How it works", href: "/#how-it-works" },
       { label: "Features", href: "/#features" },
-      { label: "Pricing", href: "/#pricing" },
-    ],
-  },
-  {
-    title: "Company",
-    links: [
-      { label: "About", href: "/#" },
-      { label: "Careers", href: "/#" },
-      { label: "Contact", href: "/#" },
     ],
   },
   {
     title: "Legal",
     links: [
-      { label: "Privacy policy", href: "/#" },
-      { label: "Terms of service", href: "/#" },
+      { label: "Privacy", href: "/#" },
+      { label: "Terms", href: "/#" },
     ],
   },
 ];
@@ -33,11 +24,11 @@ function SiteFooter() {
   return (
     <footer className="border-t border-border bg-background">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(2,1fr)]">
           <div className="space-y-3">
             <Logo />
             <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
-              {siteConfig.description}
+              Reconcile financial records. Investigate exceptions.
             </p>
           </div>
           {footerNav.map((group) => (
@@ -60,7 +51,7 @@ function SiteFooter() {
         </div>
         <div className="mt-10 border-t border-border pt-6">
           <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} {siteConfig.name}, Inc. All rights reserved.
+            &copy; {new Date().getFullYear()} {siteConfig.name}. All rights reserved.
           </p>
         </div>
       </div>

@@ -28,7 +28,7 @@ const PasswordInput = forwardRef(function PasswordInput(
         aria-label={visible ? "Hide password" : "Show password"}
         aria-pressed={visible}
         tabIndex={-1}
-        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 outline-none"
+        className="absolute inset-y-0 right-0 flex items-center pr-2.5 pl-2 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 outline-none"
       >
         {visible ? (
           <EyeOff className="size-4" aria-hidden="true" />

@@ -163,16 +163,25 @@ async def update_status(
 
 
 async def add_note(
-    db, workspace_id: ObjectId, exception_id: ObjectId, user_id: ObjectId, text: str
-) -> ReconciliationException | None:
-    """Append an investigation note to an exception."""
+    db,
+    workspace_id: ObjectId,
+    exception_id: ObjectId,
+    user_id: ObjectId,
+    text: str,
+    created_by: str | None = None,
+) -> dict | None:
+    """Append an investigation note to an exception and return the created note."""
+    import uuid
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
     note = {
+        "id": uuid.uuid4().hex,
         "userId": str(user_id),
+        "createdBy": created_by,
         "text": text,
         "createdAt": now.isoformat(),
+        "updatedAt": None,
     }
     doc = await db[COLLECTION].find_one_and_update(
         {"_id": exception_id, "workspaceId": workspace_id},
@@ -182,4 +191,69 @@ async def add_note(
         },
         return_document=True,
     )
-    return ReconciliationException.from_document(doc) if doc else None
+    if doc is None:
+        return None
+    return note
+
+
+async def update_note(
+    db,
+    workspace_id: ObjectId,
+    exception_id: ObjectId,
+    note_id: str,
+    text: str,
+) -> dict | None:
+    """Edit an investigation note's content; return the updated note or None."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    doc = await db[COLLECTION].find_one(
+        {"_id": exception_id, "workspaceId": workspace_id}
+    )
+    if doc is None or not doc.get("notes"):
+        return None
+
+    notes = list(doc["notes"])
+    updated = None
+    for i, note in enumerate(notes):
+        if str(note.get("id")) == note_id:
+            notes[i] = {**note, "text": text, "updatedAt": now.isoformat()}
+            updated = notes[i]
+            break
+    if updated is None:
+        return None
+
+    await db[COLLECTION].update_one(
+        {"_id": exception_id},
+        {"$set": {"notes": notes, "updatedAt": now}},
+    )
+    return updated
+
+
+async def delete_note(
+    db,
+    workspace_id: ObjectId,
+    exception_id: ObjectId,
+    note_id: str,
+) -> dict | None:
+    """Delete an investigation note; return the removed note or None if absent."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    doc = await db[COLLECTION].find_one(
+        {"_id": exception_id, "workspaceId": workspace_id}
+    )
+    if doc is None or not doc.get("notes"):
+        return None
+
+    notes = list(doc["notes"])
+    remaining = [n for n in notes if str(n.get("id")) != note_id]
+    removed = next((n for n in notes if str(n.get("id")) == note_id), None)
+    if removed is None:
+        return None
+
+    await db[COLLECTION].update_one(
+        {"_id": exception_id},
+        {"$set": {"notes": remaining, "updatedAt": now}},
+    )
+    return removed

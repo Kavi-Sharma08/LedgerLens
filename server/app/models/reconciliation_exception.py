@@ -25,7 +25,7 @@ class ReconciliationException:
     assigned_at: datetime | None = None
     resolved_by: ObjectId | None = None
     resolved_at: datetime | None = None
-    notes: list = field(default_factory=list)  # [{userId, text, createdAt}]
+    notes: list = field(default_factory=list)  # [{id, userId, createdBy, text, createdAt, updatedAt}]
     created_at: datetime | None = None
     updated_at: datetime | None = None
     id: ObjectId | None = None
