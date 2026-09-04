@@ -48,10 +48,6 @@ export function AppShell({ user, workspace, allWorkspaces, primaryNav, secondary
       <div className="flex-1 overflow-y-auto p-3">
         <SidebarNav primary={primaryNav} secondary={secondaryNav} onNavigate={() => setDrawerOpen(false)} />
       </div>
-      <Separator />
-      <div className="p-3">
-        <ApiStatusBadge className="px-1 pb-2" />
-      </div>
     </>
   );
 
