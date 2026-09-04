@@ -44,7 +44,7 @@ async function forward(request, context, method) {
   }
 
   const { path } = await context.params;
-  const targetPath = `/${Array.isArray(path) ? path.join("/") : path}`;
+  const targetPath = `/api/${Array.isArray(path) ? path.join("/") : path}`;
   const search = new URL(request.url).search;
   const target = `${apiConfig.baseUrl}${targetPath}${search}`;
 
